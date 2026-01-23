@@ -1,22 +1,25 @@
+// src/App.jsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useEffect, useState } from "react";
-import API from "../src/api/api";
+import { useEffect, useState, useContext } from "react";
+import API from "./api/api";
 
 import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
 import Books from "./pages/Books";
 import AddBook from "./pages/AddBook";
-import ProtectedRoute from "./components/ProtectedRoute"; // import ProtectedRoute
+import Login from "./pages/Login";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { AuthContext } from "./context/AuthContext"; // import context
 
 function App() {
+  const { user } = useContext(AuthContext); // get user from context
   const [books, setBooks] = useState([]);
-  const [user, setUser] = useState(null); // example user state
 
   // Fetch books from API on mount
   useEffect(() => {
-    fetchBooks();
-  }, []);
+    if (user) fetchBooks(); // only fetch if logged in
+  }, [user]);
 
   async function fetchBooks() {
     try {
@@ -27,7 +30,6 @@ function App() {
     }
   }
 
-  // Delete a book via API and update state locally
   async function deleteBook(id) {
     try {
       await API.delete(`/books/${id}`);
@@ -37,14 +39,11 @@ function App() {
     }
   }
 
-  // Edit a book via API and update state locally
   async function editBook(updatedBook) {
     try {
       await API.put(`/books/${updatedBook.id}`, updatedBook);
       setBooks((prevBooks) =>
-        prevBooks.map((book) =>
-          book.id === updatedBook.id ? updatedBook : book
-        )
+        prevBooks.map((book) => (book.id === updatedBook.id ? updatedBook : book))
       );
     } catch (err) {
       console.error("Failed to edit book:", err);
@@ -55,9 +54,14 @@ function App() {
     <BrowserRouter>
       <Navbar />
       <div className="flex">
-        <Sidebar />
+        {/* Sidebar only renders if user is logged in */}
+        {user && <Sidebar />}
+
         <main className="p-6 w-full bg-gray-100 min-h-screen">
           <Routes>
+            {/* Public route: Login */}
+            <Route path="/login" element={<Login />} />
+
             {/* Protected Dashboard */}
             <Route
               path="/"

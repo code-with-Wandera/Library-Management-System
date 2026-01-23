@@ -1,5 +1,6 @@
+// src/context/AuthContext.jsx
 import { createContext, useState, useEffect } from "react";
-import jwt_decode from "jwt-decode"; 
+import * as jwt_decode from "jwt-decode"; 
 
 export const AuthContext = createContext();
 
@@ -14,10 +15,11 @@ export function AuthProvider({ children }) {
   const isTokenExpired = (token) => {
     if (!token) return true;
     try {
-      const decoded = jwt_decode(token);
+      const decoded = jwt_decode.default(token); // FIX: use .default with import *
       const now = Date.now() / 1000; // seconds
       return decoded.exp < now;
     } catch (err) {
+      console.error("Failed to decode token:", err);
       return true;
     }
   };
