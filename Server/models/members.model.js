@@ -2,9 +2,9 @@ import mongoose from "mongoose";
 
 const memberSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
-    email: { type: String, unique: true },
-    phone: String,
+    firstName: { type: String, required: true },
+    lastName: { type: String, required: true },
+    className: { type: String, default: "Unassigned" }
   },
   { timestamps: true }
 );

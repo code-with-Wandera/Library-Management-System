@@ -36,6 +36,11 @@ export default function Dashboard({ books }) {
           </div>
         </div>
 
+        <div className="stat">
+          <div className="stat-title">Members</div>
+          <div className="stat-value">{membersCount}</div>
+        </div>
+
         <div className="card bg-accent text-accent-content">
           <div className="card-body">
             <h2 className="card-title">Members</h2>

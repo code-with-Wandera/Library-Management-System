@@ -11,6 +11,8 @@ import AddBook from "./pages/AddBook";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthContext } from "./context/AuthContext"; // import context
+import Members from "./pages/members.jsx";
+import Profile from "./pages/Profile.jsx";
 
 function App() {
   const { user } = useContext(AuthContext); // get user from context
@@ -43,7 +45,9 @@ function App() {
     try {
       await API.put(`/books/${updatedBook.id}`, updatedBook);
       setBooks((prevBooks) =>
-        prevBooks.map((book) => (book.id === updatedBook.id ? updatedBook : book))
+        prevBooks.map((book) =>
+          book.id === updatedBook.id ? updatedBook : book,
+        ),
       );
     } catch (err) {
       console.error("Failed to edit book:", err);
@@ -72,6 +76,15 @@ function App() {
               }
             />
 
+            <Route
+              path="/members/:id"
+              element={
+                <ProtectedRoute user={user}>
+                  <Profile />
+                </ProtectedRoute>
+              }
+            />
+
             {/* Protected Books page */}
             <Route
               path="/books"
@@ -93,6 +106,16 @@ function App() {
               element={
                 <ProtectedRoute user={user}>
                   <AddBook books={books} setBooks={setBooks} />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Protected Members page */}
+            <Route
+              path="/members"
+              element={
+                <ProtectedRoute user={user}>
+                  <Members />
                 </ProtectedRoute>
               }
             />

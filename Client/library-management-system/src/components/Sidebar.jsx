@@ -23,6 +23,9 @@ export default function Sidebar() {
         <li>
           <Link to="/add-book">Add Book</Link>
         </li>
+         <li>
+          <Link to="members">Members</Link>
+        </li>
         <li>
           <button
             onClick={logout}
