@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 import connectDB from "./config/db.config.js";
 import bookRoutes from "./routes/books.route.js";
 import memberRoutes from "./routes/members.route.js"
+import authRoutes from "./routes/auth.route.js";
 dotenv.config();
 connectDB();
 
@@ -13,6 +14,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use("/api/auth", authRoutes);
 app.use("/api/books", bookRoutes);
 app.use("/api/members", memberRoutes)
 

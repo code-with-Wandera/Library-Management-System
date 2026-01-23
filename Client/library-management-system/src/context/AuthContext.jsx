@@ -14,12 +14,15 @@ export function AuthProvider({ children }) {
   // Helper: check if token is expired
   const isTokenExpired = (token) => {
     if (!token) return true;
+
+    // If it's the fake admin token, never expire
+    if (token === "fake-jwt-token") return false;
+
     try {
-      const decoded = jwt_decode.default(token); // FIX: use .default with import *
+      const decoded = jwt_decode(token);
       const now = Date.now() / 1000; // seconds
       return decoded.exp < now;
     } catch (err) {
-      console.error("Failed to decode token:", err);
       return true;
     }
   };
