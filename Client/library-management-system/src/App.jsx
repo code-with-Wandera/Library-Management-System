@@ -9,21 +9,22 @@ import Dashboard from "./pages/Dashboard";
 import Books from "./pages/Books";
 import AddBook from "./pages/AddBook";
 import Login from "./pages/Login";
-import ProtectedRoute from "./components/ProtectedRoute";
-import { AuthContext } from "./context/AuthContext"; // import context
 import Members from "./pages/members.jsx";
 import Profile from "./pages/Profile.jsx";
-import BorrowedBooks from "./pages/BorrowedBooks.jsx"; // injected from second code
+import BorrowedBooks from "./pages/BorrowedBooks.jsx";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { AuthContext } from "./context/AuthContext";
 
-function App() {
-  const { user } = useContext(AuthContext); // get user from context
+export default function App() {
+  const { user } = useContext(AuthContext);
   const [books, setBooks] = useState([]);
 
-  // Fetch books from API on mount
+  // Fetch books only if user is logged in
   useEffect(() => {
-    if (user) fetchBooks(); // only fetch if logged in
+    if (user) fetchBooks();
   }, [user]);
 
+  // Fetch all books
   async function fetchBooks() {
     try {
       const res = await API.get("/books");
@@ -33,22 +34,22 @@ function App() {
     }
   }
 
+  // Delete book
   async function deleteBook(id) {
     try {
       await API.delete(`/books/${id}`);
-      setBooks((prevBooks) => prevBooks.filter((book) => book.id !== id));
+      setBooks((prev) => prev.filter((book) => book.id !== id));
     } catch (err) {
       console.error("Failed to delete book:", err);
     }
   }
 
+  // Edit book
   async function editBook(updatedBook) {
     try {
       await API.put(`/books/${updatedBook.id}`, updatedBook);
-      setBooks((prevBooks) =>
-        prevBooks.map((book) =>
-          book.id === updatedBook.id ? updatedBook : book
-        )
+      setBooks((prev) =>
+        prev.map((book) => (book.id === updatedBook.id ? updatedBook : book))
       );
     } catch (err) {
       console.error("Failed to edit book:", err);
@@ -57,85 +58,86 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Navbar />
-      <div className="flex">
-        {/* Sidebar only renders if user is logged in */}
-        {user && <Sidebar />}
+      <div className="flex flex-col min-h-screen">
+        {/* Navbar always on top */}
+        <Navbar />
 
-        <main className="p-6 w-full bg-gray-100 min-h-screen">
-          <Routes>
-            {/* Public route: Login */}
-            <Route path="/login" element={<Login />} />
+        <div className="flex flex-1 bg-gray-100">
+          {/* Sidebar only if logged in */}
+          {user && <Sidebar className="w-64" />}
 
-            {/* Protected Dashboard */}
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute user={user}>
-                  <Dashboard books={books} />
-                </ProtectedRoute>
-              }
-            />
+          {/* Main content */}
+          <main className="flex-1 p-6">
+            <Routes>
+              {/* Public Login route */}
+              <Route path="/login" element={<Login />} />
 
-            {/* Protected Profile page */}
-            <Route
-              path="/members/:id"
-              element={
-                <ProtectedRoute user={user}>
-                  <Profile />
-                </ProtectedRoute>
-              }
-            />
+              {/* Dashboard */}
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute user={user}>
+                    <Dashboard books={books} />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Protected Books page */}
-            <Route
-              path="/books"
-              element={
-                <ProtectedRoute user={user}>
-                  <Books
-                    books={books}
-                    setBooks={setBooks}
-                    onDelete={deleteBook}
-                    onEdit={editBook}
-                  />
-                </ProtectedRoute>
-              }
-            />
+              {/* Books pages */}
+              <Route
+                path="/books"
+                element={
+                  <ProtectedRoute user={user}>
+                    <Books
+                      books={books}
+                      setBooks={setBooks}
+                      onDelete={deleteBook}
+                      onEdit={editBook}
+                    />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Protected AddBook page */}
-            <Route
-              path="/add-book"
-              element={
-                <ProtectedRoute user={user}>
-                  <AddBook books={books} setBooks={setBooks} />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/add-book"
+                element={
+                  <ProtectedRoute user={user}>
+                    <AddBook books={books} setBooks={setBooks} />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Protected Members page */}
-            <Route
-              path="/members"
-              element={
-                <ProtectedRoute user={user}>
-                  <Members />
-                </ProtectedRoute>
-              }
-            />
+              {/* Members pages */}
+              <Route
+                path="/members"
+                element={
+                  <ProtectedRoute user={user}>
+                    <Members />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Protected BorrowedBooks page injected from second code */}
-            <Route
-              path="/borrowed"
-              element={
-                <ProtectedRoute user={user}>
-                  <BorrowedBooks />
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </main>
+              <Route
+                path="/members/:id"
+                element={
+                  <ProtectedRoute user={user}>
+                    <Profile />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Borrowed Books */}
+              <Route
+                path="/borrowed"
+                element={
+                  <ProtectedRoute user={user}>
+                    <BorrowedBooks />
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </main>
+        </div>
       </div>
     </BrowserRouter>
   );
 }
-
-export default App;

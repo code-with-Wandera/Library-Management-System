@@ -4,37 +4,35 @@ import { useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
 
 export default function Sidebar() {
-  const { user, logout } = useContext(AuthContext); // get user and logout function
+  const { user, logout } = useContext(AuthContext);
 
-  if (!user) {
-    // If not logged in, hide sidebar
-    return null;
-  }
+  if (!user) return null;
 
   return (
-    <div className="w-64 bg-base-200 min-h-screen p-4">
-      <ul className="menu">
-        <li>
-          <Link to="/">Dashboard</Link>
-        </li>
-        <li>
-          <Link to="/books">Books</Link>
-        </li>
-        <li>
-          <Link to="/add-book">Add Book</Link>
-        </li>
-         <li>
-          <Link to="members">Members</Link>
-        </li>
-        <li>
-          <button
-            onClick={logout}
-            className="w-full text-left mt-4 text-red-500 hover:text-red-700"
-          >
-            Logout
-          </button>
-        </li>
-      </ul>
-    </div>
+    <aside className="w-64 min-h-screen bg-gray-900 text-white p-4">
+      <h2 className="text-xl font-bold mb-6">Library System</h2>
+
+      <nav className="space-y-2">
+        <Link className="block px-3 py-2 rounded hover:bg-gray-700" to="/">
+          Dashboard
+        </Link>
+        <Link className="block px-3 py-2 rounded hover:bg-gray-700" to="/books">
+          Books
+        </Link>
+        <Link className="block px-3 py-2 rounded hover:bg-gray-700" to="/add-book">
+          Add Book
+        </Link>
+        <Link className="block px-3 py-2 rounded hover:bg-gray-700" to="/members">
+          Members
+        </Link>
+
+        <button
+          onClick={logout}
+          className="mt-6 w-full text-left px-3 py-2 rounded bg-red-600 hover:bg-red-700"
+        >
+          Logout
+        </button>
+      </nav>
+    </aside>
   );
 }

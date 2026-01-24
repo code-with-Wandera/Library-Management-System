@@ -7,8 +7,10 @@ import { AuthProvider } from "./context/AuthContext";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
+    <div data-theme="light">
     <AuthProvider>
       <App />
     </AuthProvider>
+    </div>
   </React.StrictMode>
 );
