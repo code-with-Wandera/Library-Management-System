@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import BookCard from "../components/BookCard";
+import BookCard from "../components/BookCard.jsx";
 import API from "../api/api";
 
 export default function Books({ books, setBooks, onDelete, onEdit }) {

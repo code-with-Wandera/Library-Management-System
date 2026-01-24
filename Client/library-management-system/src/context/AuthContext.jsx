@@ -1,6 +1,6 @@
 // src/context/AuthContext.jsx
-import { createContext, useState, useEffect } from "react";
-import * as jwt_decode from "jwt-decode"; 
+import { createContext, useState, useEffect, useCallback } from "react";
+import jwt_decode from "jwt-decode"; // no * import needed
 
 export const AuthContext = createContext();
 
@@ -12,51 +12,53 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(storedToken || null);
 
   // Helper: check if token is expired
-  const isTokenExpired = (token) => {
+  const isTokenExpired = useCallback((token) => {
     if (!token) return true;
-
-    // If it's the fake admin token, never expire
-    if (token === "fake-jwt-token") return false;
+    if (token === "fake-jwt-token") return false; // keep admin fake token valid
 
     try {
       const decoded = jwt_decode(token);
       const now = Date.now() / 1000; // seconds
       return decoded.exp < now;
-    } catch (err) {
-      return true;
+    } catch {
+      return true; // invalid token
     }
-  };
+  }, []);
 
   // Auto-logout if token expires
   useEffect(() => {
     if (token && isTokenExpired(token)) {
       logout();
     }
-  }, [token]);
+  }, [token, isTokenExpired]);
 
-  function login(data) {
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
-    setUser(data.user);
-    setToken(data.token);
+  // Login function
+  function login({ token, user }) {
+    localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(user));
+    setToken(token);
+    setUser(user);
   }
 
+  // Logout function
   function logout() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    setUser(null);
     setToken(null);
+    setUser(null);
   }
 
-  // Optional: sync localStorage with user state
+  // Optional: auto-restore session if token is valid
   useEffect(() => {
-    if (user) {
-      localStorage.setItem("user", JSON.stringify(user));
-    } else {
-      localStorage.removeItem("user");
-      localStorage.removeItem("token");
+    if (token && !user && !isTokenExpired(token)) {
+      try {
+        const decoded = jwt_decode(token);
+        setUser({ id: decoded.id, role: decoded.role });
+      } catch {
+        logout();
+      }
     }
-  }, [user]);
+  }, [token, user, isTokenExpired]);
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout }}>

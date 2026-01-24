@@ -2,59 +2,81 @@ import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
-// REGISTER a new user
+/**
+ * REGISTER a new user
+ */
 export const register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
-    // Hash the password before saving
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
+
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create the user
+    // Create user
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role: role || "user",
+      role,
     });
 
-    res.status(201).json(user);
+    res.status(201).json({
+      message: "User registered successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 };
 
-// LOGIN existing user (with admin override)
+/**
+ * LOGIN existing user
+ */
 export const login = async (req, res) => {
-  const { email, password } = req.body;
-
-  // Hardcoded admin login (for testing)
-  if (email === "admin@test.com" && password === "123456") {
-    return res.json({
-      token: "fake-jwt-token",
-      user: {
-        id: 1,
-        name: "Admin",
-        email: "admin@test.com",
-        role: "admin",
-      },
-    });
-  }
-
   try {
-    // Look for user in DB
-    const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ message: "Invalid credentials" });
+    const { email, password } = req.body;
 
-    // Compare password
+    // Hardcoded admin login (testing only)
+    if (email === "admin@test.com" && password === "123456") {
+      return res.json({
+        token: "fake-jwt-token",
+        user: {
+          id: "admin",
+          name: "Admin",
+          email: "admin@test.com",
+          role: "admin",
+        },
+      });
+    }
+
+    // Find user
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    // Compare passwords
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
     // Generate JWT
     const token = jwt.sign(
       { id: user._id, role: user.role },
-      process.env.JWT_SECRET || "secret123",
+      process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
 

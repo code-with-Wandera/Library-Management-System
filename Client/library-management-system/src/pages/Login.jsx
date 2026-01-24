@@ -8,25 +8,39 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const { login } = useContext(AuthContext); // get login function
-  const navigate = useNavigate(); // to redirect after login
+  const { login } = useContext(AuthContext);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
+    setLoading(true);
 
     try {
       const res = await API.post("/auth/login", { email, password });
-      
-      // Call login from AuthContext
+
+      // Save token & user in context & localStorage
       login({ token: res.data.token, user: res.data.user });
 
       // Redirect to dashboard
       navigate("/", { replace: true });
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.message || "Login failed");
+
+      // Handle different error cases
+      if (!err.response) {
+        setError("Server unreachable. Please try again later.");
+      } else if (err.response.status === 401) {
+        setError("Invalid email or password.");
+      } else if (err.response.status === 404) {
+        setError("Login route not found. Check your backend.");
+      } else {
+        setError(err.response.data?.message || "Login failed.");
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -38,9 +52,7 @@ export default function Login() {
       >
         <h2 className="text-2xl font-bold mb-6 text-center">Login</h2>
 
-        {error && (
-          <p className="text-red-500 mb-4 text-center">{error}</p>
-        )}
+        {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
 
         <div className="mb-4">
           <label className="block mb-1 font-semibold">Email</label>
@@ -66,9 +78,12 @@ export default function Login() {
 
         <button
           type="submit"
-          className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 rounded font-semibold"
+          className={`w-full py-2 rounded font-semibold text-white ${
+            loading ? "bg-gray-400 cursor-not-allowed" : "bg-blue-500 hover:bg-blue-600"
+          }`}
+          disabled={loading}
         >
-          Login
+          {loading ? "Logging in..." : "Login"}
         </button>
       </form>
     </div>

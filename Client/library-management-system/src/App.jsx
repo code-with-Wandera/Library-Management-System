@@ -4,7 +4,7 @@ import { useEffect, useState, useContext } from "react";
 import API from "./api/api";
 
 import Navbar from "./components/Navbar";
-import Sidebar from "./components/Sidebar";
+import Sidebar from "./components/Sidebar.jsx";
 import Dashboard from "./pages/Dashboard";
 import Books from "./pages/Books";
 import AddBook from "./pages/AddBook";
@@ -13,6 +13,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthContext } from "./context/AuthContext"; // import context
 import Members from "./pages/members.jsx";
 import Profile from "./pages/Profile.jsx";
+import BorrowedBooks from "./pages/BorrowedBooks.jsx"; // injected from second code
 
 function App() {
   const { user } = useContext(AuthContext); // get user from context
@@ -46,8 +47,8 @@ function App() {
       await API.put(`/books/${updatedBook.id}`, updatedBook);
       setBooks((prevBooks) =>
         prevBooks.map((book) =>
-          book.id === updatedBook.id ? updatedBook : book,
-        ),
+          book.id === updatedBook.id ? updatedBook : book
+        )
       );
     } catch (err) {
       console.error("Failed to edit book:", err);
@@ -76,6 +77,7 @@ function App() {
               }
             />
 
+            {/* Protected Profile page */}
             <Route
               path="/members/:id"
               element={
@@ -116,6 +118,16 @@ function App() {
               element={
                 <ProtectedRoute user={user}>
                   <Members />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Protected BorrowedBooks page injected from second code */}
+            <Route
+              path="/borrowed"
+              element={
+                <ProtectedRoute user={user}>
+                  <BorrowedBooks />
                 </ProtectedRoute>
               }
             />
