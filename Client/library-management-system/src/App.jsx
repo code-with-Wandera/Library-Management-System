@@ -134,6 +134,14 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+                <Route
+                path="/classes"
+                element={
+                  <ProtectedRoute user={user}>
+                    <Classes />
+                  </ProtectedRoute>
+                }
+              />
             </Routes>
           </main>
         </div>
