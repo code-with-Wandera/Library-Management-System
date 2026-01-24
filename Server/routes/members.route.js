@@ -13,9 +13,7 @@ const router = express.Router();
 // Multer setup for CSV uploads
 const upload = multer({ dest: "uploads/" });
 
-// =========================
 // ROUTES
-// =========================
 
 // GET all members (any logged-in user)
 router.get("/", protect, getMembers);
