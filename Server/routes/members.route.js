@@ -1,35 +1,35 @@
 import express from "express";
-import auth from "../middlewares/auth.middleware.js";
 import multer from "multer";
 import {
   getMembers,
   addMember,
-  updateMember,
-  deleteMember,
-  importMembers
+  importMembersFromCSV,
 } from "../controllers/members.controller.js";
 
+import { protect, adminOnly } from "../middlewares/auth.middleware.js";
+
 const router = express.Router();
+
+// Multer setup for CSV uploads
 const upload = multer({ dest: "uploads/" });
 
-// GET single member
-router.get("/:id", async (req, res) => {
-  try {
-    const member = await Member.findById(req.params.id);
-    if (!member) return res.status(404).json({ message: "Member not found" });
-    res.json(member);
-  } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
-  }
-});
+// =========================
+// ROUTES
+// =========================
 
-// CRUD routes
-router.get("/", auth, getMembers);
-router.post("/", auth, addMember);
-router.put("/:id", auth, updateMember);
-router.delete("/:id", auth, deleteMember);
+// GET all members (any logged-in user)
+router.get("/", protect, getMembers);
 
-// CSV import
-router.post("/import", auth, upload.single("file"), importMembers);
+// ADD single member (admin only)
+router.post("/", protect, adminOnly, addMember);
+
+// IMPORT members from CSV (admin only)
+router.post(
+  "/import-csv",
+  protect,
+  adminOnly,
+  upload.single("file"),
+  importMembersFromCSV
+);
 
 export default router;
