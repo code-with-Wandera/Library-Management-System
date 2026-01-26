@@ -1,111 +1,112 @@
+// src/pages/Books.jsx
 import { useState, useEffect } from "react";
-import BookCard from "../components/BookCard.jsx";
 import API from "../api/api";
+import BookCard from "../components/BookCard.jsx";
 
 export default function Books() {
   const [books, setBooks] = useState([]);
-  const [editingBook, setEditingBook] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [editingBook, setEditingBook] = useState(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedAuthor, setSelectedAuthor] = useState("all");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   // Pagination
   const booksPerPage = 6;
   const [page, setPage] = useState(1);
 
-  /** Fetch all books */
-  async function fetchBooks() {
+  /** Fetch books */
+  const fetchBooks = async () => {
     try {
       setLoading(true);
       setError("");
       const res = await API.get("/books");
-      setBooks(res.data || []);
+      setBooks(res.data);
     } catch (err) {
       console.error(err);
       setError("Failed to fetch books.");
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
     fetchBooks();
   }, []);
 
-  /** Add a new book */
-  async function handleAdd(e) {
+  /** Add book */
+  const handleAdd = async (e) => {
     e.preventDefault();
     if (!title.trim() || !author.trim()) return alert("All fields required");
 
     try {
-      const newBook = { title: title.trim(), author: author.trim(), isBorrowed: false };
-      const res = await API.post("/books", newBook);
+      const res = await API.post("/books", { title, author });
       setBooks((prev) => [res.data, ...prev]);
       setTitle("");
       setAuthor("");
       setPage(1);
     } catch (err) {
       console.error(err);
-      alert("Failed to add book");
+      alert(err.response?.data?.message || "Failed to add book.");
     }
-  }
+  };
 
   /** Open edit modal */
-  function openEdit(book) {
+  const openEdit = (book) => {
     setEditingBook(book);
     setTitle(book.title);
     setAuthor(book.author);
     document.getElementById("edit_modal").showModal();
-  }
+  };
 
-  /** Update a book */
-  async function handleUpdate() {
+  /** Update book */
+  const handleUpdate = async () => {
     if (!title.trim() || !author.trim()) return alert("All fields required");
 
     try {
-      const updatedBook = { ...editingBook, title: title.trim(), author: author.trim() };
-      const res = await API.put(`/books/${editingBook._id}`, updatedBook);
+      const res = await API.put(`/books/${editingBook._id}`, { title, author });
       setBooks((prev) =>
         prev.map((b) => (b._id === res.data._id ? res.data : b))
       );
       document.getElementById("edit_modal").close();
+      setEditingBook(null);
     } catch (err) {
       console.error(err);
-      alert("Failed to update book");
+      alert(err.response?.data?.message || "Failed to update book.");
     }
-  }
+  };
 
-  /** Delete a book */
-  async function handleDelete(id) {
+  /** Delete book */
+  const handleDelete = async (id) => {
     if (!window.confirm("Are you sure you want to delete this book?")) return;
+
     try {
       await API.delete(`/books/${id}`);
       setBooks((prev) => prev.filter((b) => b._id !== id));
     } catch (err) {
       console.error(err);
-      alert("Failed to delete book");
+      alert(err.response?.data?.message || "Failed to delete book.");
     }
-  }
+  };
 
-  /** Toggle borrow status */
-  async function handleToggleBorrow(book) {
-    try {
-      const updatedBook = { ...book, isBorrowed: !book.isBorrowed };
-      const res = await API.put(`/books/${book._id}`, updatedBook);
-      setBooks((prev) =>
-        prev.map((b) => (b._id === res.data._id ? res.data : b))
-      );
-    } catch (err) {
-      console.error(err);
-      alert("Failed to update book status");
-    }
+  /** Borrow / Return */
+async function handleToggleBorrow(book) {
+  try {
+    const res = await API.put(`/books/${book._id}/toggle-borrow`);
+    setBooks(prev =>
+      prev.map(b => (b._id === res.data._id ? res.data : b))
+    );
+  } catch (err) {
+    console.error(err);
+    alert("Failed to update borrow status");
   }
+}
 
-  // Filter logic
+  /** Filter and search */
   const authors = ["all", ...new Set(books.map((b) => b.author))];
   const filteredBooks = books.filter((book) => {
     const matchesSearch = book.title.toLowerCase().includes(searchTerm.toLowerCase());
@@ -113,7 +114,7 @@ export default function Books() {
     return matchesSearch && matchesAuthor;
   });
 
-  // Pagination
+  /** Pagination */
   const totalPages = Math.ceil(filteredBooks.length / booksPerPage);
   const paginatedBooks = filteredBooks.slice(
     (page - 1) * booksPerPage,
@@ -128,7 +129,7 @@ export default function Books() {
     <div>
       <h1 className="text-2xl font-bold mb-4">Books</h1>
 
-      {/* Add Book */}
+      {/* Add Book Form */}
       <form onSubmit={handleAdd} className="flex flex-col md:flex-row gap-2 mb-6">
         <input
           className="input input-bordered w-full md:w-1/3"
@@ -167,17 +168,19 @@ export default function Books() {
         </select>
       </div>
 
+      {/* Loading & Error */}
       {loading && <p>Loading books...</p>}
       {error && <p className="text-red-500">{error}</p>}
       {!loading && filteredBooks.length === 0 && <p className="text-gray-500">No books found.</p>}
 
+      {/* Books Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {paginatedBooks.map((book) => (
           <BookCard
             key={book._id}
             book={book}
-            onDelete={handleDelete}
             onEdit={openEdit}
+            onDelete={handleDelete}
             onToggleBorrow={handleToggleBorrow}
           />
         ))}
@@ -205,8 +208,16 @@ export default function Books() {
         <div className="modal-box">
           <h3 className="font-bold text-lg">Edit Book</h3>
           <div className="space-y-4 mt-4">
-            <input className="input input-bordered w-full" value={title} onChange={(e) => setTitle(e.target.value)} />
-            <input className="input input-bordered w-full" value={author} onChange={(e) => setAuthor(e.target.value)} />
+            <input
+              className="input input-bordered w-full"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+            <input
+              className="input input-bordered w-full"
+              value={author}
+              onChange={(e) => setAuthor(e.target.value)}
+            />
           </div>
           <div className="modal-action">
             <button className="btn btn-primary" onClick={handleUpdate}>Save</button>

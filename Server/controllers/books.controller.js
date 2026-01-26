@@ -1,71 +1,113 @@
+// src/controllers/books.controller.js
 import Book from "../models/books.model.js";
+import mongoose from "mongoose";
 
-// Helper to add `id` field
-const formatBook = (book) => {
-  const b = book.toObject();
-  b.id = b._id.toString();
-  return b;
-};
-
-// GET all books
+/** GET /books - fetch all books */
 export const getBooks = async (req, res) => {
   try {
-    const books = await Book.find();
-    res.json(books.map(formatBook));
-  } catch (error) {
-    console.error(error);
+    const books = await Book.find().populate({
+      path: "borrowedBy",
+      select: "name email", // return only necessary fields
+    });
+    res.status(200).json(books);
+  } catch (err) {
+    console.error("Error fetching books:", err);
     res.status(500).json({ message: "Failed to fetch books" });
   }
 };
 
-// ADD a new book
+/** POST /books - add a new book */
 export const addBook = async (req, res) => {
+  const { title, author } = req.body;
+
+  if (!title?.trim() || !author?.trim()) {
+    return res.status(400).json({ message: "Title and author are required" });
+  }
+
   try {
-    const book = new Book(req.body);
-    const saved = await book.save();
-    res.status(201).json(formatBook(saved));
-  } catch (error) {
-    console.error(error);
-    res.status(400).json({ message: "Failed to add book" });
+    const newBook = new Book({ title: title.trim(), author: author.trim() });
+    await newBook.save();
+    res.status(201).json(newBook);
+  } catch (err) {
+    console.error("Error adding book:", err);
+    res.status(500).json({ message: "Failed to add book" });
   }
 };
 
-// UPDATE a book
+/** PUT /books/:id - update book info */
 export const updateBook = async (req, res) => {
-  try {
-    const { borrowedBy, ...rest } = req.body;
+  const { id } = req.params;
+  const { title, author } = req.body;
 
-    // Fetch current book
-    const book = await Book.findById(req.params.id);
+  if (!mongoose.Types.ObjectId.isValid(id))
+    return res.status(400).json({ message: "Invalid book ID" });
+
+  if (!title?.trim() || !author?.trim())
+    return res.status(400).json({ message: "Title and author are required" });
+
+  try {
+    const updatedBook = await Book.findByIdAndUpdate(
+      id,
+      { title: title.trim(), author: author.trim() },
+      { new: true, runValidators: true }
+    ).populate({ path: "borrowedBy", select: "name email" });
+
+    if (!updatedBook)
+      return res.status(404).json({ message: "Book not found" });
+
+    res.status(200).json(updatedBook);
+  } catch (err) {
+    console.error("Error updating book:", err);
+    res.status(500).json({ message: "Failed to update book" });
+  }
+};
+
+/** DELETE /books/:id - delete book */
+export const deleteBook = async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id))
+    return res.status(400).json({ message: "Invalid book ID" });
+
+  try {
+    const deleted = await Book.findByIdAndDelete(id);
+    if (!deleted)
+      return res.status(404).json({ message: "Book not found" });
+
+    res.status(200).json({ message: "Book deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting book:", err);
+    res.status(500).json({ message: "Failed to delete book" });
+  }
+};
+
+/** PUT /books/:id/toggle-borrow - borrow or return book */
+export const toggleBorrowBook = async (req, res) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id))
+    return res.status(400).json({ message: "Invalid book ID" });
+
+  if (!req.user || !req.user._id)
+    return res.status(401).json({ message: "Unauthorized" });
+
+  try {
+    const book = await Book.findById(id);
     if (!book) return res.status(404).json({ message: "Book not found" });
 
-    // Update fields from frontend
-    for (let key in rest) {
-      book[key] = rest[key];
+    // toggle borrow/return
+    if (book.isBorrowed) {
+      book.borrowedBy = null; // return
+    } else {
+      book.borrowedBy = req.user._id; // borrow
     }
 
-    // Sync borrowed status automatically
-    if (borrowedBy !== undefined) {
-      book.borrowedBy = borrowedBy || null;
-      book.isBorrowed = !!borrowedBy;
-    }
+    await book.save();
+    await book.populate({ path: "borrowedBy", select: "name email" });
 
-    const updated = await book.save();
-    res.json(formatBook(updated));
-  } catch (error) {
-    console.error(error);
-    res.status(400).json({ message: "Failed to update book" });
-  }
-};
-
-// DELETE a book
-export const deleteBook = async (req, res) => {
-  try {
-    const deleted = await Book.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ message: "Book not found" });
-    res.json({ message: "Book deleted" });
-  } catch (error) {
-    console.error(error);
-    res.status(400).json({ message: "Failed to delete book" });
+    res.status(200).json(book);
+  } catch (err) {
+    console.error("Error toggling borrow:", err);
+    res.status(500).json({ message: "Failed to update borrow status" });
   }
 };

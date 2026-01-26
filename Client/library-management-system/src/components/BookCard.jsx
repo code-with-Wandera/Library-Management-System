@@ -1,30 +1,45 @@
-export default function BookCard({ book, onDelete, onEdit, onToggleBorrow }) {
-  return (
-    <div className="card bg-base-100 shadow">
-      <div className="card-body">
-        <div className="flex items-center gap-2">
-          <h2 className="card-title">{book.title}</h2>
-          <span
-            className={`text-xs font-semibold px-2 py-1 rounded-full text-white
-                        transition-all duration-300 ease-in-out
-                        transform hover:scale-110 hover:shadow-lg
-                        ${book.isBorrowed ? "bg-red-500" : "bg-green-500"}`}
-          >
-            {book.isBorrowed ? "Borrowed" : "Available"}
-          </span>
-        </div>
-        <p>Author: {book.author}</p>
+// src/components/BookCard.jsx
+import React from "react";
 
-        <div className="flex gap-2 mt-4">
-          <button className="btn btn-sm btn-warning" onClick={() => onEdit(book)}>Edit</button>
-          <button className="btn btn-sm btn-error" onClick={() => onDelete(book._id)}>Delete</button>
+export default function BookCard({ book, onEdit, onDelete, onToggleBorrow }) {
+  return (
+    <div className="card bg-white shadow-md p-4 flex flex-col justify-between">
+      <div>
+        <h2 className="text-xl font-bold mb-2">{book.title}</h2>
+        <p className="text-gray-600 mb-1">Author: {book.author}</p>
+        {book.isBorrowed && book.borrowedBy ? (
+          <p className="text-red-500 font-medium">
+            Borrowed by: {book.borrowedBy.name || "Unknown"}
+          </p>
+        ) : (
+          <p className="text-green-500 font-medium">Available</p>
+        )}
+      </div>
+
+      <div className="mt-4 flex justify-between items-center">
+        <div className="flex gap-2">
           <button
-            className={`btn btn-sm ${book.isBorrowed ? "btn-success" : "btn-info"}`}
-            onClick={() => onToggleBorrow(book)}
+            className="btn btn-sm btn-primary"
+            onClick={() => onEdit(book)}
           >
-            {book.isBorrowed ? "Return Book" : "Borrow Book"}
+            Edit
+          </button>
+          <button
+            className="btn btn-sm btn-error"
+            onClick={() => onDelete(book._id)}
+          >
+            Delete
           </button>
         </div>
+
+        <button
+          className={`btn btn-sm ${
+            book.isBorrowed ? "btn-warning" : "btn-success"
+          }`}
+          onClick={() => onToggleBorrow(book)}
+        >
+          {book.isBorrowed ? "Return" : "Borrow"}
+        </button>
       </div>
     </div>
   );

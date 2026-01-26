@@ -4,6 +4,7 @@ const bookSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
     author: { type: String, required: true },
+    isbn: { type: String, unique: true, sparse: true }, // optional unique ISBN
     isBorrowed: { type: Boolean, default: false },
     borrowedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -14,13 +15,15 @@ const bookSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Pre-save hook to sync isBorrowed with borrowedBy
-bookSchema.pre("save", async function () {
+// --- FIXED PRE-SAVE HOOK ---
+bookSchema.pre("save", function () {
+  // regular function, not async, not arrow
   this.isBorrowed = this.borrowedBy ? true : false;
 });
 
-// Optional: also update on findOneAndUpdate operations
-bookSchema.pre("findOneAndUpdate", async function () {
+// --- FIXED PRE-FINDONEANDUPDATE HOOK ---
+bookSchema.pre("findOneAndUpdate", function () {
+  // regular function, not async, not arrow
   const update = this.getUpdate();
   if (update.borrowedBy !== undefined) {
     update.isBorrowed = update.borrowedBy ? true : false;
