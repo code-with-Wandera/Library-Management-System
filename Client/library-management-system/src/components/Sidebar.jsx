@@ -19,9 +19,6 @@ export default function Sidebar() {
         <Link className="block px-3 py-2 rounded hover:bg-gray-700" to="/books">
           Books
         </Link>
-        <Link className="block px-3 py-2 rounded hover:bg-gray-700" to="/add-book">
-          Add Book
-        </Link>
         <Link className="block px-3 py-2 rounded hover:bg-gray-700" to="/members">
           Members
         </Link>

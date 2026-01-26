@@ -7,7 +7,6 @@ import Navbar from "./components/Navbar";
 import Sidebar from "./components/Sidebar.jsx";
 import Dashboard from "./pages/Dashboard";
 import Books from "./pages/Books";
-import AddBook from "./pages/AddBook";
 import Login from "./pages/Login";
 import Members from "./pages/members.jsx";
 import Profile from "./pages/Profile.jsx";
@@ -98,16 +97,6 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-
-              <Route
-                path="/add-book"
-                element={
-                  <ProtectedRoute user={user}>
-                    <AddBook books={books} setBooks={setBooks} />
-                  </ProtectedRoute>
-                }
-              />
-
               {/* Members pages */}
               <Route
                 path="/members"
