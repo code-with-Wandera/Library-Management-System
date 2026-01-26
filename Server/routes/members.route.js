@@ -1,33 +1,23 @@
+// routes/members.routes.js
 import express from "express";
-import multer from "multer";
 import {
   getMembers,
   addMember,
   importMembersFromCSV,
 } from "../controllers/members.controller.js";
- 
-import { protect, adminOnly } from "../middlewares/auth.middleware.js";
+import { protect } from "../middlewares/auth.middleware.js";
+import multer from "multer";
 
 const router = express.Router();
-
-// Multer setup for CSV uploads
 const upload = multer({ dest: "uploads/" });
 
-// ROUTES
-
-// GET all members (any logged-in user)
+// GET all members (protected)
 router.get("/", protect, getMembers);
 
-// ADD single member (admin only)
-router.post("/", protect, adminOnly, addMember);
+// ADD single member (protected)
+router.post("/", protect, addMember);
 
-// IMPORT members from CSV (admin only)
-router.post(
-  "/import-csv",
-  protect,
-  adminOnly,
-  upload.single("file"),
-  importMembersFromCSV
-);
+// IMPORT members from CSV (protected)
+router.post("/import", protect, upload.single("file"), importMembersFromCSV);
 
 export default router;

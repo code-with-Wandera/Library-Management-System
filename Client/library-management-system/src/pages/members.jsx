@@ -9,20 +9,27 @@ export default function Members() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [file, setFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // Fetch members
   async function fetchMembers(p = page) {
     try {
+      setLoading(true);
+      setError("");
       const res = await API.get(`/members?page=${p}&limit=5`);
-      setMembers(res.data.members);
-      setTotalPages(res.data.totalPages);
-      setPage(res.data.page);
+      setMembers(res.data.members || []);
+      setTotalPages(res.data.totalPages || 1);
+      setPage(res.data.page || 1);
     } catch (err) {
       console.error(err);
+      setError("Failed to fetch members.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  // Add member 
+  // Add member
   async function addMember(e) {
     e.preventDefault();
     if (!firstName || !lastName) {
@@ -43,11 +50,17 @@ export default function Members() {
 
   // Delete member
   async function removeMember(id) {
-    await API.delete(`/members/${id}`);
-    fetchMembers();
+    if (!window.confirm("Are you sure you want to delete this member?")) return;
+    try {
+      await API.delete(`/members/${id}`);
+      fetchMembers();
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete member");
+    }
   }
 
-  // Upload CSV ✅
+  // Upload CSV
   async function uploadCSV(e) {
     e.preventDefault();
     if (!file) return alert("Select a CSV file");
@@ -68,6 +81,7 @@ export default function Members() {
 
   useEffect(() => {
     fetchMembers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -104,33 +118,40 @@ export default function Members() {
         </button>
       </form>
 
-  {/* Members List */}
-<div className="flex flex-col gap-2">
-  {members?.map((m) => (
-    <div
-      key={m._id}
-      className="flex justify-between items-center p-3 border rounded"
-    >
-      <span>{m.firstName} {m.lastName}</span>
+      {/* Members List */}
+      {loading ? (
+        <p>Loading members...</p>
+      ) : error ? (
+        <p className="text-red-500">{error}</p>
+      ) : members.length === 0 ? (
+        <p>No members found.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {members.map((m) => (
+            <div
+              key={m._id}
+              className="flex justify-between items-center p-3 border rounded"
+            >
+              <span>{m.firstName} {m.lastName}</span>
 
-      <div className="flex gap-2">
-        <Link
-          to={`/members/${m._id}`}
-          className="btn btn-sm btn-info"
-        >
-          View
-        </Link>
-        <button
-          className="btn btn-sm btn-error"
-          onClick={() => removeMember(m._id)}
-        >
-          Delete
-        </button>
-      </div>
-    </div>
-  ))}
-</div>
-
+              <div className="flex gap-2">
+                <Link
+                  to={`/members/${m._id}`}
+                  className="btn btn-sm btn-info"
+                >
+                  View
+                </Link>
+                <button
+                  className="btn btn-sm btn-error"
+                  onClick={() => removeMember(m._id)}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Pagination */}
       <div className="flex gap-2 mt-4 justify-center">
