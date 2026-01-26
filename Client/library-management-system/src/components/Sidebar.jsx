@@ -26,6 +26,10 @@ export default function Sidebar() {
           Members
         </Link>
 
+         <Link className="block px-3 py-2 rounded hover:bg-gray-700" to="/classes">
+          Classes
+        </Link>
+
         <button
           onClick={logout}
           className="mt-6 w-full text-left px-3 py-2 rounded bg-red-600 hover:bg-red-700"

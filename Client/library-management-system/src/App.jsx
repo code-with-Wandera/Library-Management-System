@@ -14,6 +14,8 @@ import Profile from "./pages/Profile.jsx";
 import BorrowedBooks from "./pages/BorrowedBooks.jsx";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthContext } from "./context/AuthContext";
+import Classes from "./pages/Classes.jsx";
+
 
 export default function App() {
   const { user } = useContext(AuthContext);

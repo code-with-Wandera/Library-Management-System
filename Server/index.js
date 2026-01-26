@@ -6,7 +6,9 @@ import connectDB from "./config/db.config.js";
 import bookRoutes from "./routes/books.route.js";
 import memberRoutes from "./routes/members.route.js"
 import authRoutes from "./routes/auth.route.js";
-import classRoutes from "./routes/class.routes.js";
+import classRoutes from "./routes/class.route.js";
+import adminRoutes from "./routes/admin.route.js";
+
 dotenv.config();
 connectDB();
 
@@ -19,6 +21,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/books", bookRoutes);
 app.use("/api/members", memberRoutes)
 app.use("/api/classes", classRoutes);
+app.use("/api/admin", adminRoutes);
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () =>
   console.log(`Server running on port ${PORT}`)

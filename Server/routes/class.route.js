@@ -1,24 +1,40 @@
+// routes/class.routes.js
 import express from "express";
-import Class from "../models/Class.js";
+import { verifyToken } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
+// Dummy in-memory classes array
+let classes = [
+  { _id: "1", name: "S1A" },
+  { _id: "2", name: "S2B" },
+];
+
 // Get all classes
-router.get("/", async (req, res) => {
-  const classes = await Class.find().sort({ name: 1 });
+router.get("/", verifyToken, (req, res) => {
   res.json(classes);
 });
 
-// Create class
-router.post("/", async (req, res) => {
-  const newClass = new Class({ name: req.body.name });
-  await newClass.save();
+// Add a class
+router.post("/", verifyToken, (req, res) => {
+  const { name } = req.body;
+  const newClass = { _id: (classes.length + 1).toString(), name };
+  classes.push(newClass);
   res.json(newClass);
 });
 
-// Delete class
-router.delete("/:id", async (req, res) => {
-  await Class.findByIdAndDelete(req.params.id);
+// Update a class
+router.put("/:id", verifyToken, (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  classes = classes.map((c) => (c._id === id ? { ...c, name } : c));
+  res.json(classes.find((c) => c._id === id));
+});
+
+// Delete a class
+router.delete("/:id", verifyToken, (req, res) => {
+  const { id } = req.params;
+  classes = classes.filter((c) => c._id !== id);
   res.json({ message: "Class deleted" });
 });
 

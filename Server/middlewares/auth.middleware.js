@@ -27,3 +27,6 @@ export const adminOnly = (req, res, next) => {
   }
   next();
 };
+
+// Alias for existing routes using 'verifyToken'
+export const verifyToken = protect;

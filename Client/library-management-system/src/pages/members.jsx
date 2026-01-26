@@ -22,7 +22,7 @@ export default function Members() {
     }
   }
 
-  // Add member ✅
+  // Add member 
   async function addMember(e) {
     e.preventDefault();
     if (!firstName || !lastName) {
@@ -104,32 +104,33 @@ export default function Members() {
         </button>
       </form>
 
-      {/* Members List */}
-      <div className="flex flex-col gap-2">
-        {members.map((m) => (
-          <div
-            key={m._id}
-            className="flex justify-between items-center p-3 border rounded"
-          >
-            <span>{m.firstName} {m.lastName}</span>
+  {/* Members List */}
+<div className="flex flex-col gap-2">
+  {members?.map((m) => (
+    <div
+      key={m._id}
+      className="flex justify-between items-center p-3 border rounded"
+    >
+      <span>{m.firstName} {m.lastName}</span>
 
-            <div className="flex gap-2">
-              <Link
-                to={`/members/${m._id}`}
-                className="btn btn-sm btn-info"
-              >
-                View
-              </Link>
-              <button
-                className="btn btn-sm btn-error"
-                onClick={() => removeMember(m._id)}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        ))}
+      <div className="flex gap-2">
+        <Link
+          to={`/members/${m._id}`}
+          className="btn btn-sm btn-info"
+        >
+          View
+        </Link>
+        <button
+          className="btn btn-sm btn-error"
+          onClick={() => removeMember(m._id)}
+        >
+          Delete
+        </button>
       </div>
+    </div>
+  ))}
+</div>
+
 
       {/* Pagination */}
       <div className="flex gap-2 mt-4 justify-center">

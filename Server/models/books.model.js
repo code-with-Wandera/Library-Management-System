@@ -15,19 +15,17 @@ const bookSchema = new mongoose.Schema(
 );
 
 // Pre-save hook to sync isBorrowed with borrowedBy
-bookSchema.pre("save", function (next) {
+bookSchema.pre("save", async function () {
   this.isBorrowed = this.borrowedBy ? true : false;
-  next();
 });
 
 // Optional: also update on findOneAndUpdate operations
-bookSchema.pre("findOneAndUpdate", function (next) {
+bookSchema.pre("findOneAndUpdate", async function () {
   const update = this.getUpdate();
   if (update.borrowedBy !== undefined) {
     update.isBorrowed = update.borrowedBy ? true : false;
     this.setUpdate(update);
   }
-  next();
 });
 
 export default mongoose.model("Book", bookSchema);
