@@ -1,4 +1,3 @@
-// src/pages/Classes.jsx
 import { useEffect, useState } from "react";
 import API from "../api/api.js";
 
@@ -8,33 +7,31 @@ export default function Classes() {
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
+  const [error, setError] = useState("");
 
-  // Fetch classes from API
   async function fetchClasses() {
     try {
       setLoading(true);
+      setError("");
       const res = await API.get("/classes");
-      setClasses(res.data);
+      setClasses(res.data || []);
     } catch (err) {
       console.error(err);
-      showMessage("Failed to fetch classes", "error");
+      setError("Failed to fetch classes.");
     } finally {
       setLoading(false);
     }
   }
 
-  // Add or edit class
   async function handleSubmit(e) {
     e.preventDefault();
     if (!name) return showMessage("Class name cannot be empty", "error");
 
     try {
       if (editingId) {
-        // Edit existing class
         await API.put(`/classes/${editingId}`, { name });
         showMessage("Class updated successfully", "success");
       } else {
-        // Add new class
         await API.post("/classes", { name });
         showMessage("Class added successfully", "success");
       }
@@ -47,7 +44,6 @@ export default function Classes() {
     }
   }
 
-  // Delete class
   async function deleteClass(id) {
     if (!confirm("Are you sure you want to delete this class?")) return;
 
@@ -61,13 +57,11 @@ export default function Classes() {
     }
   }
 
-  // Edit button click
   function editClass(c) {
     setName(c.name);
     setEditingId(c._id);
   }
 
-  // Show success/error messages
   function showMessage(text, type) {
     setMessage({ text, type });
     setTimeout(() => setMessage({ text: "", type: "" }), 3000);
@@ -93,6 +87,8 @@ export default function Classes() {
           {message.text}
         </div>
       )}
+
+      {error && <p className="text-red-500 mb-4">{error}</p>}
 
       {/* Add/Edit Form */}
       <form onSubmit={handleSubmit} className="flex gap-2 mb-4">

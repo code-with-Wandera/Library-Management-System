@@ -9,6 +9,8 @@ export default function Books({ books, setBooks, onDelete, onEdit }) {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedAuthor, setSelectedAuthor] = useState("all");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   // Pagination
   const booksPerPage = 6;
@@ -34,9 +36,9 @@ export default function Books({ books, setBooks, onDelete, onEdit }) {
   }
 
   // Filter logic
-  const authors = ["all", ...new Set(books.map((b) => b.author))];
+  const authors = ["all", ...new Set((books || []).map((b) => b.author))];
 
-  const filteredBooks = books.filter((book) => {
+  const filteredBooks = (books || []).filter((book) => {
     const matchesSearch = book.title
       .toLowerCase()
       .includes(searchTerm.toLowerCase());
@@ -72,6 +74,26 @@ export default function Books({ books, setBooks, onDelete, onEdit }) {
     }
   }
 
+  // Fetch books if empty
+  useEffect(() => {
+    async function fetchBooks() {
+      if (!books || books.length === 0) {
+        try {
+          setLoading(true);
+          setError("");
+          const res = await API.get("/books");
+          setBooks(res.data || []);
+        } catch (err) {
+          console.error(err);
+          setError("Failed to fetch books.");
+        } finally {
+          setLoading(false);
+        }
+      }
+    }
+    fetchBooks();
+  }, [books, setBooks]);
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-4">Books</h1>
@@ -104,7 +126,9 @@ export default function Books({ books, setBooks, onDelete, onEdit }) {
         </select>
       </div>
 
-      {filteredBooks.length === 0 && (
+      {loading && <p>Loading books...</p>}
+      {error && <p className="text-red-500">{error}</p>}
+      {!loading && !error && filteredBooks.length === 0 && (
         <p className="text-gray-500">No books found.</p>
       )}
 
@@ -134,7 +158,9 @@ export default function Books({ books, setBooks, onDelete, onEdit }) {
           {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
             <button
               key={num}
-              className={`btn btn-sm ${num === page ? "btn-primary" : "btn-outline"}`}
+              className={`btn btn-sm ${
+                num === page ? "btn-primary" : "btn-outline"
+              }`}
               onClick={() => setPage(num)}
             >
               {num}
