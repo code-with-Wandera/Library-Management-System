@@ -12,19 +12,11 @@ export default function Classes() {
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [limit] = useState(5); // items per page
+  const [limit] = useState(5);
   const [totalPages, setTotalPages] = useState(1);
 
-  // User info and JWT
+  // User info for role-based actions
   const user = JSON.parse(localStorage.getItem("user"));
-  const token = localStorage.getItem("token");
-
-  // Axios config with Authorization header
-  const config = {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
 
   // Fetch classes with search & pagination
   async function fetchClasses() {
@@ -56,7 +48,7 @@ export default function Classes() {
     fetchClasses();
   }, [search, page]);
 
-  // Add / Update class
+  // Add / Update class (Admin only)
   async function handleSubmit(e) {
     e.preventDefault();
     const trimmedName = name.trim();
@@ -69,14 +61,13 @@ export default function Classes() {
           return showMessage("No changes detected", "error");
         }
 
-        const res = await API.patch(`/classes/${editingId}`, { name: trimmedName }, config);
-
+        const res = await API.patch(`/classes/${editingId}`, { name: trimmedName });
         setClasses((prev) =>
           prev.map((c) => (c._id === editingId ? res.data : c))
         );
         showMessage("Class updated successfully", "success");
       } else {
-        const res = await API.post("/classes", { name: trimmedName }, config);
+        const res = await API.post("/classes", { name: trimmedName });
         setClasses((prev) => [res.data, ...prev]);
         showMessage("Class added successfully", "success");
       }
@@ -90,12 +81,12 @@ export default function Classes() {
     }
   }
 
-  // Delete class
+  // Delete class (Admin only)
   async function deleteClass(id) {
     if (!confirm("Are you sure you want to delete this class?")) return;
 
     try {
-      await API.delete(`/classes/${id}`, config);
+      await API.delete(`/classes/${id}`);
       setClasses((prev) => prev.filter((c) => c._id !== id));
       showMessage("Class deleted successfully", "success");
     } catch (err) {
@@ -110,7 +101,7 @@ export default function Classes() {
     setEditingId(c._id);
   }
 
-  // Display notification
+  // Show notification
   function showMessage(text, type) {
     setMessage({ text, type });
     setTimeout(() => setMessage({ text: "", type: "" }), 3000);

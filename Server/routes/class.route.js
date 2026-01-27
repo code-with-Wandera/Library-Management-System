@@ -1,15 +1,10 @@
 import express from "express";
-import {
-  getClasses,
-  createClass,
-  updateClass,
-  deleteClass,
-} from "../controllers/class.controller.js";
+import { getClasses, createClass, updateClass, deleteClass } from "../controllers/class.controller.js";
 import { protect, adminOnly } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-// Public route (everyone can GET)
+// Public route
 router.get("/classes", getClasses);
 
 // Admin-only routes

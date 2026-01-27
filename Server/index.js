@@ -20,7 +20,7 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/books", bookRoutes);
 app.use("/api/members", memberRoutes)
-app.use("/api/classes", classRoutes);
+app.use("/api", classRoutes);
 app.use("/api/admin", adminRoutes);
 
 const PORT = process.env.PORT || 5000;
