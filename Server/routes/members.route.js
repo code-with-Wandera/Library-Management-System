@@ -1,46 +1,52 @@
-import jwt from "jsonwebtoken";
+import express from "express";
+import {
+  getMembers,
+  getMemberById,
+  addMember,
+  deleteMember,
+  importMembers,
+  exportMembers,
+  getMemberAnalytics,
+  getMemberGrowth,
+} from "../controllers/members.controller.js";
+import { protect, adminOnly } from "../middlewares/auth.middleware.js";
+import multer from "multer";
 
-/**
- * Protect routes - user must be logged in
- */
-export const protect = (req, res, next) => {
-  const authHeader = req.headers.authorization;
+// Setup multer for CSV upload
+const upload = multer({ dest: "uploads/" });
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ message: "Not authorized" });
-  }
+const router = express.Router();
 
-  const token = authHeader.split(" ")[1];
+// All routes protected
+router.use(protect);
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123");
-    req.user = decoded; // attach user info to request
-    next();
-  } catch (err) {
-    return res.status(401).json({ message: "Token invalid" });
-  }
-};
+// ============================
+// CRUD Routes
+// ============================
 
-/**
- * Admin-only middleware (backward compatible)
- */
-export const adminOnly = (req, res, next) => {
-  if (!req.user || req.user.role !== "admin") {
-    return res.status(403).json({ message: "Admin only" });
-  }
-  next();
-};
+// Get all members (paginated)
+router.get("/", getMembers);
 
-/**
- * Flexible role-based authorization
- * Usage: authorize("admin", "staff")
- */
-export const authorize = (...roles) => (req, res, next) => {
-  if (!req.user || !roles.includes(req.user.role)) {
-    return res.status(403).json({ message: "Forbidden" });
-  }
-  next();
-};
+// Get single member by ID
+router.get("/:id", getMemberById);
 
-// Alias for existing routes using 'verifyToken'
-export const verifyToken = protect;
+// Add member (admin only)
+router.post("/", adminOnly, addMember);
+
+// Delete member (admin only)
+router.delete("/:id", adminOnly, deleteMember);
+
+// CSV Import/Export
+// Import members from CSV (admin only)
+router.post("/import", adminOnly, upload.single("file"), importMembers);
+
+// Export members to CSV (admin only)
+router.get("/export", adminOnly, exportMembers);
+
+// Member analytics
+router.get("/analytics/data", adminOnly, getMemberAnalytics);
+
+// Member growth over time
+router.get("/analytics/growth", adminOnly, getMemberGrowth);
+
+export default router;

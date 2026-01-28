@@ -69,7 +69,7 @@ export default function Members() {
           },
         });
 
-        setMembers(res.data?.members ?? []);
+        setMembers(res.data.members || []);
         setTotalPages(res.data?.totalPages ?? 1);
         setPage(res.data?.page ?? targetPage);
       } catch (err) {
@@ -88,22 +88,37 @@ export default function Members() {
   }, [fetchMembers]);
 
   /* FETCH MEMBER GROWTH */
-  async function fetchMemberGrowth() {
-    try {
-      setGrowthLoading(true);
-      const res = await API.get("/members/analytics/growth");
-      // Map backend data to chart
-      const chartData = res.data.map((item) => ({
-        month: item._id,
-        members: item.count,
-      }));
-      setGrowthData(chartData);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setGrowthLoading(false);
+  /* FETCH MEMBER GROWTH */
+async function fetchMemberGrowth() {
+  try {
+    setGrowthLoading(true);
+    const res = await API.get("/members/analytics/growth");
+
+    // Ensure res.data is an array
+    if (!Array.isArray(res.data)) {
+      console.warn("Expected an array for growth data but got:", res.data);
+      setGrowthData([]); // fallback to empty array
+      return;
     }
+
+    // Map backend data to chart format safely
+    const chartData = res.data.map((item) => {
+      // Backend might return { date, total } or similar
+      return {
+        month: item.date || item._id || "Unknown",
+        members: item.total || item.count || 0,
+      };
+    });
+
+    setGrowthData(chartData);
+  } catch (err) {
+    console.error("Failed to fetch member growth:", err);
+    setGrowthData([]); // fallback on error
+  } finally {
+    setGrowthLoading(false);
   }
+}
+
 
   /* ADD MEMBER */
   async function addMember(e) {
