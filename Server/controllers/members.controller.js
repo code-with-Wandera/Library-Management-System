@@ -1,134 +1,183 @@
-import Member from "../models/members.model.js";
+import Member from "../models/member.model.js";
+import AuditLog from "../models/auditLog.model.js";
+import csvParser from "csv-parser";
 import fs from "fs";
-import csv from "csv-parser";
 
-/**
- * GET all members
- */
-export const getMembers = async (req, res) => {
+/*HELPERS */
+async function logAction({ action, entity, entityId, userId, meta }) {
+  await AuditLog.create({
+    action,
+    entity,
+    entityId,
+    performedBy: userId,
+    meta,
+  });
+}
+
+/* GET MEMBERS */
+export async function getMembers(req, res) {
   try {
-    const members = await Member.find();
-    res.json(members);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    const {
+      page = 1,
+      limit = 5,
+      search = "",
+      sortBy = "createdAt",
+      order = "desc",
+    } = req.query;
+
+    const query = search
+      ? {
+          $or: [
+            { firstName: { $regex: search, $options: "i" } },
+            { lastName: { $regex: search, $options: "i" } },
+          ],
+        }
+      : {};
+
+    const members = await Member.find(query)
+      .sort({ [sortBy]: order === "asc" ? 1 : -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .lean();
+
+    const total = await Member.countDocuments(query);
+
+    res.json({
+      members,
+      page: Number(page),
+      totalPages: Math.ceil(total / limit),
+      total,
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch members" });
   }
-};
+}
 
-/**
- * ADD single member
- */
-export const addMember = async (req, res) => {
+/* CREATE MEMBER*/
+export async function createMember(req, res) {
   try {
-    const { firstName, lastName, email, className } = req.body;
+    const { firstName, lastName } = req.body;
 
     const member = await Member.create({
-      firstName,
-      lastName,
-      email,
-      className,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+    });
+
+    await logAction({
+      action: "CREATE",
+      entity: "Member",
+      entityId: member._id,
+      userId: req.user.id,
     });
 
     res.status(201).json(member);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-};
-
-/**
- * IMPORT members from CSV
- * - Validates headers
- * - Skips duplicates (firstName + lastName)
- * - Skips invalid rows
- * - Returns import summary
- */
-export const importMembersFromCSV = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: "No file uploaded" });
-  }
-
-  const membersToInsert = [];
-  const skipped = [];
-  const invalid = [];
-  const filePath = req.file.path;
-
-  try {
-    // Load existing members once
-    const existingMembers = await Member.find({}, "firstName lastName");
-    const existingSet = new Set(
-      existingMembers.map(
-        m => `${m.firstName.toLowerCase()}|${m.lastName.toLowerCase()}`
-      )
-    );
-
-    fs.createReadStream(filePath)
-      .pipe(csv())
-      .on("headers", (headers) => {
-        const requiredHeaders = ["firstName", "lastName"];
-        const missing = requiredHeaders.filter(h => !headers.includes(h));
-
-        if (missing.length) {
-          fs.unlinkSync(filePath);
-          return res
-            .status(400)
-            .json({ message: `Missing CSV headers: ${missing.join(", ")}` });
-        }
-      })
-      .on("data", (row) => {
-        const firstName = row.firstName?.trim();
-        const lastName = row.lastName?.trim();
-
-        if (!firstName || !lastName) {
-          invalid.push(row);
-          return;
-        }
-
-        const key = `${firstName.toLowerCase()}|${lastName.toLowerCase()}`;
-
-        if (existingSet.has(key)) {
-          skipped.push(row);
-          return;
-        }
-
-        membersToInsert.push({
-          firstName,
-          lastName,
-          email: row.email || undefined,
-          className: row.className || undefined,
-        });
-
-        existingSet.add(key); // prevent duplicates within same CSV
-      })
-      .on("end", async () => {
-        try {
-          if (membersToInsert.length) {
-            await Member.insertMany(membersToInsert);
-          }
-
-          fs.unlinkSync(filePath);
-
-          res.json({
-            message: "CSV import completed",
-            added: membersToInsert.length,
-            skipped: skipped.length,
-            invalid: invalid.length,
-          });
-        } catch (err) {
-          fs.unlinkSync(filePath);
-          res.status(500).json({
-            message: "Failed to import members",
-            error: err.message,
-          });
-        }
-      })
-      .on("error", (err) => {
-        fs.unlinkSync(filePath);
-        res.status(500).json({
-          message: "Failed to process CSV",
-          error: err.message,
-        });
-      });
   } catch (err) {
-    fs.unlinkSync(filePath);
-    res.status(500).json({ message: err.message });
+    if (err.code === 11000) {
+      return res.status(409).json({
+        message: "Member already exists",
+      });
+    }
+
+    res.status(500).json({ message: "Failed to create member" });
   }
-};
+}
+
+/* DELETE MEMBER */
+export async function deleteMember(req, res) {
+  try {
+    const member = await Member.findByIdAndDelete(req.params.id);
+
+    if (!member) {
+      return res.status(404).json({ message: "Member not found" });
+    }
+
+    await logAction({
+      action: "DELETE",
+      entity: "Member",
+      entityId: member._id,
+      userId: req.user.id,
+    });
+
+    res.json({ message: "Member deleted" });
+  } catch {
+    res.status(500).json({ message: "Failed to delete member" });
+  }
+}
+
+/* CSV IMPOR*/
+export async function importMembers(req, res) {
+  if (!req.file) {
+    return res.status(400).json({ message: "CSV file required" });
+  }
+
+  const members = [];
+
+  fs.createReadStream(req.file.path)
+    .pipe(csvParser())
+    .on("data", (row) => {
+      if (row.firstName && row.lastName) {
+        members.push({
+          firstName: row.firstName.trim(),
+          lastName: row.lastName.trim(),
+        });
+      }
+    })
+    .on("end", async () => {
+      fs.unlinkSync(req.file.path);
+
+      const inserted = await Member.insertMany(members, {
+        ordered: false,
+      }).catch(() => []);
+
+      await logAction({
+        action: "IMPORT",
+        entity: "Member",
+        userId: req.user.id,
+        meta: { count: inserted.length },
+      });
+
+      res.json({
+        message: `${inserted.length} members imported`,
+      });
+    });
+}
+
+/* CSV EXPORT*/
+export async function exportMembers(req, res) {
+  const members = await Member.find().lean();
+
+  const csv =
+    "firstName,lastName\n" +
+    members.map((m) => `${m.firstName},${m.lastName}`).join("\n");
+
+  await logAction({
+    action: "EXPORT",
+    entity: "Member",
+    userId: req.user.id,
+    meta: { count: members.length },
+  });
+
+  res.header("Content-Type", "text/csv");
+  res.attachment("members.csv");
+  res.send(csv);
+}
+
+/* ANALYTICS */
+export async function memberAnalytics(req, res) {
+  const total = await Member.countDocuments();
+
+  const byLetter = await Member.aggregate([
+    {
+      $group: {
+        _id: { $substrCP: ["$firstName", 0, 1] },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  res.json({
+    totalMembers: total,
+    byFirstLetter: byLetter,
+  });
+}
