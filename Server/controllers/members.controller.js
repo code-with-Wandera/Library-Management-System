@@ -181,3 +181,39 @@ export async function memberAnalytics(req, res) {
     byFirstLetter: byLetter,
   });
 }
+
+/**
+ * GET /members/analytics/growth
+ * Returns member growth over time (daily)
+ */
+export async function memberGrowth(req, res) {
+  try {
+    const growth = await Member.aggregate([
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              format: "%Y-%m-%d",
+              date: "$createdAt",
+            },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    res.json(
+      growth.map((g) => ({
+        date: g._id,
+        count: g.count,
+      }))
+    );
+  } catch (err) {
+    console.error("Growth analytics error:", err);
+    res.status(500).json({
+      message: "Failed to fetch growth analytics",
+    });
+  }
+}
+
