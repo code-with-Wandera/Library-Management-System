@@ -1,4 +1,4 @@
-import Member from "../models/member.model.js";
+import Member from "../models/members.model.js";
 import AuditLog from "../models/auditLog.model.js";
 import csvParser from "csv-parser";
 import fs from "fs";
