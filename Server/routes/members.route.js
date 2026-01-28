@@ -1,23 +1,33 @@
-// routes/members.routes.js
 import express from "express";
+import multer from "multer";
 import {
   getMembers,
-  addMember,
-  importMembersFromCSV,
+  createMember,
+  deleteMember,
+  importMembers,
+  exportMembers,
+  memberAnalytics,
 } from "../controllers/members.controller.js";
-import { protect } from "../middlewares/auth.middleware.js";
-import multer from "multer";
+import { authorize } from "../middleware/authorize.js";
+import { authenticate } from "../middleware/authenticate.js";
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
-// GET all members (protected)
-router.get("/", protect, getMembers);
+router.use(authenticate);
 
-// ADD single member (protected)
-router.post("/", protect, addMember);
+router.get("/", getMembers);
+router.get("/analytics", authorize("admin", "librarian"), memberAnalytics);
+router.get("/export", authorize("admin"), exportMembers);
 
-// IMPORT members from CSV (protected)
-router.post("/import", protect, upload.single("file"), importMembersFromCSV);
+router.post("/", authorize("admin", "librarian"), createMember);
+router.post(
+  "/import",
+  authorize("admin", "librarian"),
+  upload.single("file"),
+  importMembers
+);
+
+router.delete("/:id", authorize("admin"), deleteMember);
 
 export default router;
