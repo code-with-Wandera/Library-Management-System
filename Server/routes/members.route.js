@@ -1,5 +1,6 @@
 import express from "express";
 import multer from "multer";
+
 import {
   getMembers,
   createMember,
@@ -7,29 +8,28 @@ import {
   importMembers,
   exportMembers,
   memberAnalytics,
+  memberGrowth,
 } from "../controllers/members.controller.js";
-import { authorize } from "../middleware/authorize.js";
-import { authenticate } from "../middleware/authenticate.js";
-import { memberGrowth } from "../controllers/members.controller.js";
+
+import { protect, authorize } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
-router.use(authenticate);
+// All routes protected
+router.use(protect);
 
+/* MEMBER CRUD */
 router.get("/", getMembers);
-router.get("/analytics", authorize("admin", "librarian"), memberAnalytics);
-router.get("/export", authorize("admin"), exportMembers);
-router.get("/analytics/growth", authorize("admin", "librarian"), memberGrowth);
-
 router.post("/", authorize("admin", "librarian"), createMember);
-router.post(
-  "/import",
-  authorize("admin", "librarian"),
-  upload.single("file"),
-  importMembers,
-);
-
 router.delete("/:id", authorize("admin"), deleteMember);
+
+/* CSV IMPORT/EXPORT */
+router.post("/import", authorize("admin", "librarian"), upload.single("file"), importMembers);
+router.get("/export", authorize("admin"), exportMembers);
+
+/*  ANALYTICS */
+router.get("/analytics", authorize("admin", "librarian"), memberAnalytics);
+router.get("/analytics/growth", authorize("admin", "librarian"), memberGrowth);
 
 export default router;
