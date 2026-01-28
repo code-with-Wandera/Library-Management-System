@@ -1,35 +1,46 @@
-import express from "express";
-import multer from "multer";
+import jwt from "jsonwebtoken";
 
-import {
-  getMembers,
-  createMember,
-  deleteMember,
-  importMembers,
-  exportMembers,
-  memberAnalytics,
-  memberGrowth,
-} from "../controllers/members.controller.js";
+/**
+ * Protect routes - user must be logged in
+ */
+export const protect = (req, res, next) => {
+  const authHeader = req.headers.authorization;
 
-import { protect, authorize } from "../middlewares/auth.middleware.js";
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ message: "Not authorized" });
+  }
 
-const router = express.Router();
-const upload = multer({ dest: "uploads/" });
+  const token = authHeader.split(" ")[1];
 
-// All routes protected
-router.use(protect);
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123");
+    req.user = decoded; // attach user info to request
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: "Token invalid" });
+  }
+};
 
-/* MEMBER CRUD */
-router.get("/", getMembers);
-router.post("/", authorize("admin", "librarian"), createMember);
-router.delete("/:id", authorize("admin"), deleteMember);
+/**
+ * Admin-only middleware (backward compatible)
+ */
+export const adminOnly = (req, res, next) => {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ message: "Admin only" });
+  }
+  next();
+};
 
-/* CSV IMPORT/EXPORT */
-router.post("/import", authorize("admin", "librarian"), upload.single("file"), importMembers);
-router.get("/export", authorize("admin"), exportMembers);
+/**
+ * Flexible role-based authorization
+ * Usage: authorize("admin", "staff")
+ */
+export const authorize = (...roles) => (req, res, next) => {
+  if (!req.user || !roles.includes(req.user.role)) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+  next();
+};
 
-/*  ANALYTICS */
-router.get("/analytics", authorize("admin", "librarian"), memberAnalytics);
-router.get("/analytics/growth", authorize("admin", "librarian"), memberGrowth);
-
-export default router;
+// Alias for existing routes using 'verifyToken'
+export const verifyToken = protect;

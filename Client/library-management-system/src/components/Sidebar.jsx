@@ -36,14 +36,7 @@ export default function Sidebar() {
         >
           Members
         </NavLink>
-
-        <NavLink
-          to="/members/analytics/growth"
-          className={({ isActive }) => `${baseClass} ${isActive ? activeClass : ""}`}
-        >
-          Member Analytics
-        </NavLink>
-
+        
         <NavLink
           to="/classes"
           className={({ isActive }) => `${baseClass} ${isActive ? activeClass : ""}`}

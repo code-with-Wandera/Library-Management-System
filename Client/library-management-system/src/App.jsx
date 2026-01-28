@@ -8,7 +8,6 @@ import Dashboard from "./pages/Dashboard";
 import Books from "./pages/Books";
 import Login from "./pages/Login";
 import Members from "./pages/members.jsx";
-import MemberGrowth from "./pages/MemberGrowth.jsx";
 import Profile from "./pages/Profile.jsx";
 import BorrowedBooks from "./pages/BorrowedBooks.jsx";
 import Classes from "./pages/Classes.jsx";
@@ -114,14 +113,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-              <Route
-                path="/members/analytics/growth"
-                element={
-                  <ProtectedRoute user={user}>
-                    <MemberGrowth />
-                  </ProtectedRoute>
-                }
-              />
+             
 
               {/* Borrowed Books */}
               <Route

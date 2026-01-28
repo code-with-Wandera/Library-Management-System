@@ -3,6 +3,15 @@ import { Link } from "react-router-dom";
 import Papa from "papaparse";
 import API from "../api/api";
 import jwtDecode from "jwt-decode";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 export default function Members() {
   /* STATE */
@@ -24,6 +33,9 @@ export default function Members() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [growthData, setGrowthData] = useState([]);
+  const [growthLoading, setGrowthLoading] = useState(true);
+
   const LIMIT = 5;
 
   /* AUTH / ROLE */
@@ -40,7 +52,7 @@ export default function Members() {
   const canWrite = role === "admin" || role === "librarian";
   const canDelete = role === "admin";
 
-  /* FETCH  */
+  /* FETCH MEMBERS */
   const fetchMembers = useCallback(
     async (targetPage = page) => {
       try {
@@ -72,7 +84,26 @@ export default function Members() {
 
   useEffect(() => {
     fetchMembers(1);
+    fetchMemberGrowth();
   }, [fetchMembers]);
+
+  /* FETCH MEMBER GROWTH */
+  async function fetchMemberGrowth() {
+    try {
+      setGrowthLoading(true);
+      const res = await API.get("/members/analytics/growth");
+      // Map backend data to chart
+      const chartData = res.data.map((item) => ({
+        month: item._id,
+        members: item.count,
+      }));
+      setGrowthData(chartData);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setGrowthLoading(false);
+    }
+  }
 
   /* ADD MEMBER */
   async function addMember(e) {
@@ -93,6 +124,7 @@ export default function Members() {
       setFirstName("");
       setLastName("");
       fetchMembers(1);
+      fetchMemberGrowth(); // update chart after add
     } catch {
       setError("Failed to add member.");
     } finally {
@@ -100,7 +132,7 @@ export default function Members() {
     }
   }
 
-  /* DELETE */
+  /* DELETE MEMBER */
   async function removeMember(id) {
     if (!canDelete) return;
     if (!window.confirm("Delete this member?")) return;
@@ -109,6 +141,7 @@ export default function Members() {
       setLoading(true);
       await API.delete(`/members/${id}`);
       fetchMembers(page > 1 && members.length === 1 ? page - 1 : page);
+      fetchMemberGrowth(); // update chart after delete
     } catch {
       setError("Failed to delete member.");
     } finally {
@@ -161,6 +194,7 @@ export default function Members() {
       setFile(null);
       setCsvPreview([]);
       fetchMembers(1);
+      fetchMemberGrowth(); // update chart after CSV import
     } catch {
       setError("CSV import failed.");
     } finally {
@@ -169,22 +203,18 @@ export default function Members() {
   }
 
   /* ANALYTICS */
-  const analytics = useMemo(() => {
-    return {
-      total: members.length,
-      initials: members.filter(
-        (m) => m.firstName?.[0]?.toUpperCase() === "A"
-      ).length,
-    };
-  }, [members]);
+  const analytics = useMemo(() => ({
+    total: members.length,
+    initials: members.filter((m) => m.firstName?.[0]?.toUpperCase() === "A").length,
+  }), [members]);
 
-  /*  UI */
+  /* UI */
   return (
-    <div className="p-6 bg-white rounded-xl shadow w-full">
-      <h1 className="text-2xl font-bold mb-4">Class Members</h1>
+    <div className="p-6 bg-white rounded-xl shadow w-full space-y-6">
+      <h1 className="text-2xl font-bold">Class Members</h1>
 
-      {/* ANALYTICS */}
-      <div className="stats shadow mb-6">
+      {/* ANALYTICS STATS */}
+      <div className="stats shadow">
         <div className="stat">
           <div className="stat-title">Members on Page</div>
           <div className="stat-value">{analytics.total}</div>
@@ -195,15 +225,34 @@ export default function Members() {
         </div>
       </div>
 
+      {/* MEMBER GROWTH CHART */}
+      <div className="bg-white p-4 rounded shadow">
+        <h2 className="text-lg font-bold mb-2">Member Growth Over Time</h2>
+        {growthLoading ? (
+          <p>Loading chart...</p>
+        ) : growthData.length === 0 ? (
+          <p>No growth data available</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={growthData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="month" />
+              <YAxis allowDecimals={false} />
+              <Tooltip />
+              <Line type="monotone" dataKey="members" stroke="#4f46e5" strokeWidth={3} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
       {/* SEARCH + SORT */}
-      <div className="flex flex-wrap gap-3 mb-4">
+      <div className="flex flex-wrap gap-3">
         <input
           className="input input-bordered"
           placeholder="Search members..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-
         <select
           className="select select-bordered"
           value={sortBy}
@@ -212,7 +261,6 @@ export default function Members() {
           <option value="createdAt">Date Added</option>
           <option value="firstName">First Name</option>
         </select>
-
         <select
           className="select select-bordered"
           value={order}
@@ -221,15 +269,12 @@ export default function Members() {
           <option value="asc">ASC</option>
           <option value="desc">DESC</option>
         </select>
-
-        <button className="btn" onClick={() => fetchMembers(1)}>
-          Apply
-        </button>
+        <button className="btn" onClick={() => fetchMembers(1)}>Apply</button>
       </div>
 
-      {/* ADD MEMBER */}
+      {/* ADD MEMBER FORM */}
       {canWrite && (
-        <form onSubmit={addMember} className="flex gap-2 mb-4 flex-wrap">
+        <form onSubmit={addMember} className="flex gap-2 flex-wrap">
           <input
             className="input input-bordered"
             placeholder="First Name"
@@ -246,9 +291,9 @@ export default function Members() {
         </form>
       )}
 
-      {/* CSV */}
+      {/* CSV UPLOAD */}
       {canWrite && (
-        <form onSubmit={uploadCSV} className="mb-6">
+        <form onSubmit={uploadCSV} className="mb-4">
           <input
             type="file"
             accept=".csv"
@@ -258,49 +303,31 @@ export default function Members() {
               handleCSVPreview(e.target.files[0]);
             }}
           />
-
           {csvErrors.length > 0 && (
             <ul className="text-red-500 mt-2 text-sm">
-              {csvErrors.map((e, i) => (
-                <li key={i}>{e}</li>
-              ))}
+              {csvErrors.map((e, i) => <li key={i}>{e}</li>)}
             </ul>
           )}
-
           {csvPreview.length > 0 && (
             <div className="mt-2 text-sm text-gray-600">
               {csvPreview.length} valid rows detected
             </div>
           )}
-
-          <button
-            className="btn btn-secondary mt-2"
-            disabled={csvErrors.length > 0}
-          >
+          <button className="btn btn-secondary mt-2" disabled={csvErrors.length > 0 || !file}>
             Import CSV
           </button>
         </form>
       )}
 
-      {/* LIST */}
+      {/* MEMBERS LIST */}
       <div className="space-y-2">
         {members.map((m) => (
-          <div
-            key={m._id}
-            className="flex justify-between items-center p-3 border rounded"
-          >
+          <div key={m._id} className="flex justify-between items-center p-3 border rounded">
             <span>{m.firstName} {m.lastName}</span>
-
             <div className="flex gap-2">
-              <Link to={`/members/${m._id}`} className="btn btn-sm btn-info">
-                View
-              </Link>
-
+              <Link to={`/members/${m._id}`} className="btn btn-sm btn-info">View</Link>
               {canDelete && (
-                <button
-                  className="btn btn-sm btn-error"
-                  onClick={() => removeMember(m._id)}
-                >
+                <button className="btn btn-sm btn-error" onClick={() => removeMember(m._id)}>
                   Delete
                 </button>
               )}
@@ -310,25 +337,14 @@ export default function Members() {
       </div>
 
       {/* PAGINATION */}
-      <div className="flex justify-center gap-4 mt-6">
-        <button
-          className="btn btn-sm"
-          disabled={page === 1}
-          onClick={() => fetchMembers(page - 1)}
-        >
-          Prev
-        </button>
-
+      <div className="flex justify-center gap-4 mt-4">
+        <button className="btn btn-sm" disabled={page === 1} onClick={() => fetchMembers(page - 1)}>Prev</button>
         <span>Page {page} of {totalPages}</span>
-
-        <button
-          className="btn btn-sm"
-          disabled={page === totalPages}
-          onClick={() => fetchMembers(page + 1)}
-        >
-          Next
-        </button>
+        <button className="btn btn-sm" disabled={page === totalPages} onClick={() => fetchMembers(page + 1)}>Next</button>
       </div>
+
+      {/* ERROR MESSAGE */}
+      {error && <p className="text-red-500 mt-4">{error}</p>}
     </div>
   );
 }
