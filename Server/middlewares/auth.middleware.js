@@ -1,9 +1,10 @@
 import jwt from "jsonwebtoken";
+import User from "../models/user.model.js";
 
 /**
  * Protect routes - user must be logged in
  */
-export const protect = (req, res, next) => {
+export const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -14,9 +15,15 @@ export const protect = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret123");
-    req.user = decoded; // attach user info to request
+
+    // Attach Mongoose User document to req.user
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(401).json({ message: "User not found" });
+
+    req.user = user; // full Mongoose user object
     next();
   } catch (err) {
+    console.error("JWT verification failed:", err.message);
     return res.status(401).json({ message: "Token invalid" });
   }
 };

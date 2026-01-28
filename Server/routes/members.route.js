@@ -11,7 +11,7 @@ import {
 } from "../controllers/members.controller.js";
 import { protect, adminOnly } from "../middlewares/auth.middleware.js";
 import multer from "multer";
-
+import { logAudit } from "../utils/auditLog.utils.js";
 // Setup multer for CSV upload
 const upload = multer({ dest: "uploads/" });
 

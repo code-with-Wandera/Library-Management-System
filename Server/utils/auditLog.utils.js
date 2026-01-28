@@ -2,26 +2,27 @@
 import AuditLog from "../models/auditLog.model.js";
 
 /**
- * Logs an action to the AuditLog collection.
- * @param {Object} user - user object (req.user)
- * @param {String} action - action performed (e.g., "ADD_MEMBER")
- * @param {String} [target=""] - target of the action (e.g., memberId, CSV filename)
+ * Log an audit action
+ * @param {Object} options
+ * @param {Object} options.user - Mongoose User document
+ * @param {string} options.action - Action performed, e.g., "ADD_MEMBER"
+ * @param {string} [options.target] - Optional target, e.g., member id or file name
  */
-export async function logAudit(user, action, target = "") {
+export const logAudit = async ({ user, action, target }) => {
   try {
-    if (!user) {
-      console.warn("AuditLog skipped: no user provided");
+    if (!user || !user._id) {
+      console.warn("Audit log skipped: user not provided");
       return;
     }
 
-    const log = new AuditLog({
-      user: user._id || user.email || String(user), // adapt based on what you store
+    const audit = new AuditLog({
+      user: user._id.toString(), // store user id as string
       action,
       target,
     });
 
-    await log.save();
+    await audit.save();
   } catch (err) {
     console.error("Failed to log audit:", err.message);
   }
-}
+};
