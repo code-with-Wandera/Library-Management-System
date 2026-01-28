@@ -1,4 +1,3 @@
-// src/App.jsx
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect, useState, useContext } from "react";
 import API from "./api/api";
@@ -9,18 +8,17 @@ import Dashboard from "./pages/Dashboard";
 import Books from "./pages/Books";
 import Login from "./pages/Login";
 import Members from "./pages/members.jsx";
+import MemberGrowth from "./pages/MemberGrowth.jsx";
 import Profile from "./pages/Profile.jsx";
 import BorrowedBooks from "./pages/BorrowedBooks.jsx";
+import Classes from "./pages/Classes.jsx";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthContext } from "./context/AuthContext";
-import Classes from "./pages/Classes.jsx";
-
-/* ✅ ADD THIS IMPORT */
-import MemberGrowth from "./pages/MemberGrowth";
 
 export default function App() {
   const { user } = useContext(AuthContext);
   const [books, setBooks] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   // Fetch books only if user is logged in
   useEffect(() => {
@@ -36,6 +34,7 @@ export default function App() {
     }
   }
 
+  // Delete book
   async function deleteBook(id) {
     try {
       await API.delete(`/books/${id}`);
@@ -45,13 +44,12 @@ export default function App() {
     }
   }
 
+  // Edit book
   async function editBook(updatedBook) {
     try {
       await API.put(`/books/${updatedBook.id}`, updatedBook);
       setBooks((prev) =>
-        prev.map((book) =>
-          book.id === updatedBook.id ? updatedBook : book
-        )
+        prev.map((book) => (book.id === updatedBook.id ? updatedBook : book))
       );
     } catch (err) {
       console.error("Failed to edit book:", err);
@@ -61,14 +59,17 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="flex flex-col min-h-screen">
-        <Navbar />
+        {/* Navbar always on top */}
+        <Navbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
 
         <div className="flex flex-1 bg-gray-100">
-          {user && <Sidebar className="w-64" />}
+          {/* Sidebar */}
+          {user && sidebarOpen && <Sidebar />}
 
-          <main className="flex-1 p-6">
+          {/* Main content */}
+          <main className="flex-1 p-6 transition-all">
             <Routes>
-              {/* Public */}
+              {/* Public Login route */}
               <Route path="/login" element={<Login />} />
 
               {/* Dashboard */}
@@ -105,7 +106,6 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-
               <Route
                 path="/members/:id"
                 element={
@@ -114,8 +114,6 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
-
-              {/* ✅ MEMBER ANALYTICS — GROWTH OVER TIME */}
               <Route
                 path="/members/analytics/growth"
                 element={

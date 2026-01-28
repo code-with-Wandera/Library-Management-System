@@ -1,11 +1,13 @@
-export default function Navbar() {
+export default function Navbar({ toggleSidebar }) {
   return (
-    <div className="navbar bg-base-100 shadow">
-      <div className="flex-1">
-        <a className="btn btn-ghost text-xl">
-          📚 Library Management System
-        </a>
-      </div>
-    </div>
+    <header className="flex items-center justify-between bg-white px-4 py-3 shadow">
+      <button
+        onClick={toggleSidebar}
+        className="text-gray-700 md:hidden focus:outline-none"
+      >
+        ☰
+      </button>
+      <h1 className="text-xl font-bold">Library Management System</h1>
+    </header>
   );
 }
