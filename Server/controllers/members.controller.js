@@ -5,7 +5,9 @@ import csvParser from "csv-parser";
 import { Parser as Json2CsvParser } from "json2csv";
 import { logAudit } from "../utils/auditLog.utils.js";
 
-/* GET MEMBERS (paginated, searchable, sortable) */
+/* 
+   GET MEMBERS (paginated, searchable, sortable)
+ */
 export const getMembers = async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
@@ -30,151 +32,107 @@ export const getMembers = async (req, res) => {
       .skip((page - 1) * limit)
       .limit(limit);
 
-    await logAudit({
-      user: req.user,
-      action: "VIEW_MEMBERS",
-      target: `page=${page}`,
-    });
+    await logAudit({ user: req.user, action: "VIEW_MEMBERS", target: `page=${page}`, req });
 
     res.json({
-      data: members,
+      members,
       pagination: {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit),
       },
     });
   } catch (err) {
     console.error("getMembers:", err);
-    res.status(500).json({ message: "Failed to fetch members", error: err.message });
+    await logAudit({ user: req.user, action: "VIEW_MEMBERS_FAILED", target: err.message, req });
+    res.status(500).json({ message: "Failed to fetch members" });
   }
 };
 
-/*GET SINGLE MEMBER */
+/* GET SINGLE MEMBER */
 export const getMemberById = async (req, res) => {
   try {
     const member = await Member.findById(req.params.id);
-    if (!member) {
-      return res.status(404).json({ message: "Member not found" });
-    }
+    if (!member) return res.status(404).json({ message: "Member not found" });
 
-    await logAudit({
-      user: req.user,
-      action: "VIEW_MEMBER",
-      target: member._id.toString(),
-    });
+    await logAudit({ user: req.user, action: "VIEW_MEMBER", target: member._id.toString(), req });
 
     res.json(member);
   } catch (err) {
     console.error("getMemberById:", err);
-    res.status(500).json({ message: "Failed to fetch member", error: err.message });
+    await logAudit({ user: req.user, action: "VIEW_MEMBER_FAILED", target: err.message, req });
+    res.status(500).json({ message: "Failed to fetch member" });
   }
 };
 
-/*ADD MEMBER */
+/* ADD MEMBER */
 export const addMember = async (req, res) => {
   try {
     const { firstName, lastName, email, role } = req.body;
-
-    if (!firstName || !lastName || !email) {
-      return res.status(400).json({
-        message: "Missing required fields",
-        required: ["firstName", "lastName", "email"],
-      });
-    }
+    if (!firstName || !lastName || !email) return res.status(400).json({ message: "Missing required fields" });
 
     const exists = await Member.findOne({ email });
-    if (exists) {
-      return res.status(400).json({ message: "Member already exists" });
-    }
+    if (exists) return res.status(400).json({ message: "Member already exists" });
 
-    const member = await Member.create({
-      firstName,
-      lastName,
-      email,
-      role: role || "user",
-    });
+    const member = await Member.create({ firstName, lastName, email, role: role || "user" });
 
-    await logAudit({
-      user: req.user,
-      action: "ADD_MEMBER",
-      target: member._id.toString(),
-      details: `Added member ${firstName} ${lastName}`,
-      ip: req.ip,
-    });
+    await logAudit({ user: req.user, action: "ADD_MEMBER", target: member._id.toString(), req });
 
     res.status(201).json({ message: "Member added", member });
   } catch (err) {
     console.error("addMember:", err);
-    res.status(500).json({ message: "Failed to add member", error: err.message });
+    await logAudit({ user: req.user, action: "ADD_MEMBER_FAILED", target: err.message, req });
+    res.status(500).json({ message: "Failed to add member" });
   }
 };
 
-/* DELETEMEMBER*/
+/* DELETE MEMBER (ADMIN) */
 export const deleteMember = async (req, res) => {
   try {
     const member = await Member.findByIdAndDelete(req.params.id);
-    if (!member) {
-      return res.status(404).json({ message: "Member not found" });
-    }
+    if (!member) return res.status(404).json({ message: "Member not found" });
 
-    await logAudit({
-      user: req.user,
-      action: "DELETE_MEMBER",
-      target: member._id.toString(),
-      details: `Deleted member ${member.firstName} ${member.lastName}`,
-      ip: req.ip,
-    });
+    await logAudit({ user: req.user, action: "DELETE_MEMBER", target: member._id.toString(), req });
 
     res.json({ message: "Member deleted" });
   } catch (err) {
     console.error("deleteMember:", err);
-    res.status(500).json({ message: "Failed to delete member", error: err.message });
+    await logAudit({ user: req.user, action: "DELETE_MEMBER_FAILED", target: err.message, req });
+    res.status(500).json({ message: "Failed to delete member" });
   }
 };
 
 /* IMPORT MEMBERS (CSV) */
 export const importMembers = async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: "CSV file required" });
-  }
+  if (!req.file) return res.status(400).json({ message: "CSV file required" });
 
   const members = [];
-
   fs.createReadStream(req.file.path)
     .pipe(csvParser())
-    .on("data", (row) => {
-      if (row.firstName && row.lastName && row.email) {
-        members.push(row);
-      }
+    .on("data", row => {
+      if (row.firstName && row.lastName && row.email) members.push(row);
     })
     .on("end", async () => {
       try {
         for (const m of members) {
           const exists = await Member.findOne({ email: m.email });
-          if (!exists) {
-            await Member.create(m);
-          }
+          if (!exists) await Member.create(m);
         }
-
         fs.unlinkSync(req.file.path);
 
-        await logAudit({
-          user: req.user,
-          action: "IMPORT_MEMBERS",
-          target: `${members.length} records`,
-        });
+        await logAudit({ user: req.user, action: "IMPORT_MEMBERS", target: `${members.length} records`, req });
 
-        res.json({ message: "Members imported successfully", count: members.length });
+        res.json({ message: "Members imported successfully" });
       } catch (err) {
         console.error("importMembers:", err);
-        res.status(500).json({ message: "Failed to import members", error: err.message });
+        await logAudit({ user: req.user, action: "IMPORT_MEMBERS_FAILED", target: err.message, req });
+        res.status(500).json({ message: "Failed to import members" });
       }
     });
 };
 
-/* EXPORT MEMBERS (CSV)*/
+/* EXPORT MEMBERS (CSV) */
 export const exportMembers = async (req, res) => {
   try {
     const members = await Member.find();
@@ -182,22 +140,19 @@ export const exportMembers = async (req, res) => {
     const parser = new Json2CsvParser({ fields });
     const csv = parser.parse(members);
 
-    await logAudit({
-      user: req.user,
-      action: "EXPORT_MEMBERS",
-      target: `${members.length} records`,
-    });
+    await logAudit({ user: req.user, action: "EXPORT_MEMBERS", target: `${members.length} records`, req });
 
     res.header("Content-Type", "text/csv");
     res.attachment("members.csv");
     res.send(csv);
   } catch (err) {
     console.error("exportMembers:", err);
-    res.status(500).json({ message: "Failed to export members", error: err.message });
+    await logAudit({ user: req.user, action: "EXPORT_MEMBERS_FAILED", target: err.message, req });
+    res.status(500).json({ message: "Failed to export members" });
   }
 };
 
-/* MEMBER GROWTH ANALYTICS*/
+/* MEMBER GROWTH ANALYTICS */
 export const getMemberGrowth = async (req, res) => {
   try {
     const growth = await Member.aggregate([
@@ -211,14 +166,12 @@ export const getMemberGrowth = async (req, res) => {
       { $sort: { "_id.year": 1, "_id.month": 1 } },
     ]);
 
-    await logAudit({
-      user: req.user,
-      action: "VIEW_MEMBER_GROWTH",
-    });
+    await logAudit({ user: req.user, action: "VIEW_MEMBER_GROWTH", req });
 
     res.json(growth);
   } catch (err) {
     console.error("getMemberGrowth:", err);
-    res.status(500).json({ message: "Failed to fetch member growth", error: err.message });
+    await logAudit({ user: req.user, action: "VIEW_MEMBER_GROWTH_FAILED", target: err.message, req });
+    res.status(500).json({ message: "Failed to fetch member growth" });
   }
 };

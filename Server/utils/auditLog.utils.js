@@ -1,26 +1,50 @@
-import AuditLogModel from "../models/auditLog.model.js";
+// utils/logAudit.utils.js
+import mongoose from "mongoose";
 
-/**
- * Logs audit actions safely
- * @param {Object} param0
- * @param {Object} param0.user - Mongoose User document (optional)
- * @param {string} param0.action - action name
- * @param {string} [param0.target] - target entity / info
- * @param {string} [param0.details] - optional details
- * @param {string} [param0.ip] - optional client IP
- */
-export const logAudit = async ({ user, action, target, details, ip }) => {
+// Audit Log Schema & Model
+const auditLogSchema = new mongoose.Schema(
+  {
+    user: {
+      _id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      email: String,
+      role: String,
+    },
+    action: { type: String, required: true },
+    target: { type: String },
+    ip: { type: String },
+    userAgent: { type: String },
+  },
+  { timestamps: true }
+);
+
+const AuditLogModel = mongoose.models.AuditLog || mongoose.model("AuditLog", auditLogSchema);
+
+// Audit Logging Function
+export const logAudit = async ({ user, action, target, req }) => {
   try {
-    await AuditLogModel.create({
-      user: user?._id || null,
+    if (!action) return;
+
+    const logEntry = {
       action,
-      target,
-      details,
-      ip,
-      timestamp: new Date(),
-    });
+      target: target || "",
+      user: user
+        ? {
+            _id: user._id,
+            email: user.email,
+            role: user.role,
+          }
+        : undefined,
+    };
+
+    // Optional: capture IP and user-agent if request object is provided
+    if (req) {
+      logEntry.ip = req.ip || req.headers["x-forwarded-for"] || "";
+      logEntry.userAgent = req.headers["user-agent"] || "";
+    }
+
+    await AuditLogModel.create(logEntry);
   } catch (err) {
-    // Never crash the app if logging fails
-    console.error("Audit log failed:", err.message);
+    console.error("Audit log failed:", err.message || err);
+    // Do NOT throw error; logging should never crash main app
   }
 };

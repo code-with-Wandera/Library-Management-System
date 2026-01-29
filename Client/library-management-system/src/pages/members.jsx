@@ -18,21 +18,16 @@ export default function Members() {
   const [members, setMembers] = useState([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("createdAt");
   const [order, setOrder] = useState("desc");
-
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-
   const [file, setFile] = useState(null);
   const [csvPreview, setCsvPreview] = useState([]);
   const [csvErrors, setCsvErrors] = useState([]);
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
   const [growthData, setGrowthData] = useState([]);
   const [growthLoading, setGrowthLoading] = useState(true);
 
@@ -69,9 +64,9 @@ export default function Members() {
           },
         });
 
-        setMembers(res.data.members || []);
-        setTotalPages(res.data?.totalPages ?? 1);
-        setPage(res.data?.page ?? targetPage);
+        setMembers(res.data.data || []);
+        setTotalPages(res.data?.pagination?.pages || 1);
+        setPage(res.data?.pagination?.page || targetPage);
       } catch (err) {
         console.error(err);
         setError("Failed to fetch members.");
@@ -88,37 +83,30 @@ export default function Members() {
   }, [fetchMembers]);
 
   /* FETCH MEMBER GROWTH */
-  /* FETCH MEMBER GROWTH */
-async function fetchMemberGrowth() {
-  try {
-    setGrowthLoading(true);
-    const res = await API.get("/members/analytics/growth");
+  async function fetchMemberGrowth() {
+    try {
+      setGrowthLoading(true);
+      const res = await API.get("/members/analytics/growth");
 
-    // Ensure res.data is an array
-    if (!Array.isArray(res.data)) {
-      console.warn("Expected an array for growth data but got:", res.data);
-      setGrowthData([]); // fallback to empty array
-      return;
+      if (!Array.isArray(res.data)) {
+        console.warn("Expected array for growth data but got:", res.data);
+        setGrowthData([]);
+        return;
+      }
+
+      const chartData = res.data.map((item) => ({
+        month: item._id ? `${item._id.year}-${String(item._id.month).padStart(2, "0")}` : "Unknown",
+        members: item.count || 0,
+      }));
+
+      setGrowthData(chartData);
+    } catch (err) {
+      console.error("Failed to fetch member growth:", err);
+      setGrowthData([]);
+    } finally {
+      setGrowthLoading(false);
     }
-
-    // Map backend data to chart format safely
-    const chartData = res.data.map((item) => {
-      // Backend might return { date, total } or similar
-      return {
-        month: item.date || item._id || "Unknown",
-        members: item.total || item.count || 0,
-      };
-    });
-
-    setGrowthData(chartData);
-  } catch (err) {
-    console.error("Failed to fetch member growth:", err);
-    setGrowthData([]); // fallback on error
-  } finally {
-    setGrowthLoading(false);
   }
-}
-
 
   /* ADD MEMBER */
   async function addMember(e) {
@@ -139,7 +127,7 @@ async function fetchMemberGrowth() {
       setFirstName("");
       setLastName("");
       fetchMembers(1);
-      fetchMemberGrowth(); // update chart after add
+      fetchMemberGrowth();
     } catch {
       setError("Failed to add member.");
     } finally {
@@ -156,7 +144,7 @@ async function fetchMemberGrowth() {
       setLoading(true);
       await API.delete(`/members/${id}`);
       fetchMembers(page > 1 && members.length === 1 ? page - 1 : page);
-      fetchMemberGrowth(); // update chart after delete
+      fetchMemberGrowth();
     } catch {
       setError("Failed to delete member.");
     } finally {
@@ -164,7 +152,7 @@ async function fetchMemberGrowth() {
     }
   }
 
-  /* CSV PREVIEW & VALIDATION */
+  /* CSV PREVIEW */
   function handleCSVPreview(file) {
     Papa.parse(file, {
       header: true,
@@ -209,7 +197,7 @@ async function fetchMemberGrowth() {
       setFile(null);
       setCsvPreview([]);
       fetchMembers(1);
-      fetchMemberGrowth(); // update chart after CSV import
+      fetchMemberGrowth();
     } catch {
       setError("CSV import failed.");
     } finally {
@@ -268,19 +256,11 @@ async function fetchMemberGrowth() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <select
-          className="select select-bordered"
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-        >
+        <select className="select select-bordered" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
           <option value="createdAt">Date Added</option>
           <option value="firstName">First Name</option>
         </select>
-        <select
-          className="select select-bordered"
-          value={order}
-          onChange={(e) => setOrder(e.target.value)}
-        >
+        <select className="select select-bordered" value={order} onChange={(e) => setOrder(e.target.value)}>
           <option value="asc">ASC</option>
           <option value="desc">DESC</option>
         </select>
@@ -324,9 +304,7 @@ async function fetchMemberGrowth() {
             </ul>
           )}
           {csvPreview.length > 0 && (
-            <div className="mt-2 text-sm text-gray-600">
-              {csvPreview.length} valid rows detected
-            </div>
+            <div className="mt-2 text-sm text-gray-600">{csvPreview.length} valid rows detected</div>
           )}
           <button className="btn btn-secondary mt-2" disabled={csvErrors.length > 0 || !file}>
             Import CSV
