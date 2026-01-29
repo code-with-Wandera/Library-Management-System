@@ -3,7 +3,7 @@ import AuditLog from "../models/auditLog.model.js";
 import fs from "fs";
 import csvParser from "csv-parser";
 import { Parser as Json2CsvParser } from "json2csv";
-import { logAudit } from "../utils/logAudit.js";
+import { logAudit } from "../utils/auditLog.utils.js";
 /**
  * Get all members (paginated, searchable, sortable)
  */
