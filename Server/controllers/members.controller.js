@@ -1,162 +1,187 @@
 // controllers/members.controller.js
 import Member from "../models/members.model.js";
 import fs from "fs";
-import csvParser from "csv-parser";
-import { Parser as Json2CsvParser } from "json2csv";
-import { logAudit } from "../utils/auditLog.utils.js";
+import Papa from "papaparse";
 
-/* 
-   GET MEMBERS (paginated, searchable, sortable)
- */
+// ADD / CREATE MEMBER
+export const addMember = async (req, res) => {
+  try {
+    const { firstName, lastName, email } = req.body;
+
+    // Ensure required fields
+    if (!firstName || !lastName) {
+      return res.status(400).json({ error: "First name and last name are required." });
+    }
+
+    const newMember = new Member({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email?.trim() || undefined, // optional email
+    });
+
+    const savedMember = await newMember.save();
+    res.status(201).json(savedMember);
+  } catch (err) {
+    console.error("Error creating member:", err);
+    // Handle duplicate email error
+    if (err.code === 11000) {
+      return res.status(400).json({ error: "Email already exists." });
+    }
+    res.status(500).json({ error: "Failed to create member." });
+  }
+};
+
+// GET all members with pagination, search, and sort
 export const getMembers = async (req, res) => {
   try {
-    const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
-    const search = req.query.search?.trim();
-    const sortBy = req.query.sortBy || "createdAt";
-    const order = req.query.order === "asc" ? 1 : -1;
+    const { page = 1, limit = 10, search = "", sortBy = "createdAt", order = "desc" } = req.query;
 
-    const filter = search
-      ? {
-          $or: [
-            { firstName: new RegExp(search, "i") },
-            { lastName: new RegExp(search, "i") },
-            { email: new RegExp(search, "i") },
-          ],
-        }
-      : {};
+    const query = {
+      $or: [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+      ],
+    };
 
-    const total = await Member.countDocuments(filter);
-    const members = await Member.find(filter)
-      .sort({ [sortBy]: order })
+    const total = await Member.countDocuments(query);
+
+    const members = await Member.find(query)
+      .sort({ [sortBy]: order === "asc" ? 1 : -1 })
       .skip((page - 1) * limit)
-      .limit(limit);
-
-    await logAudit({ user: req.user, action: "VIEW_MEMBERS", target: `page=${page}`, req });
+      .limit(Number(limit));
 
     res.json({
       members,
       pagination: {
-        page,
-        limit,
         total,
+        page: Number(page),
         totalPages: Math.ceil(total / limit),
       },
     });
   } catch (err) {
-    console.error("getMembers:", err);
-    await logAudit({ user: req.user, action: "VIEW_MEMBERS_FAILED", target: err.message, req });
-    res.status(500).json({ message: "Failed to fetch members" });
+    console.error("Get members error:", err);
+    res.status(500).json({ error: "Failed to fetch members." });
   }
 };
 
-/* GET SINGLE MEMBER */
+// GET single member
 export const getMemberById = async (req, res) => {
   try {
     const member = await Member.findById(req.params.id);
-    if (!member) return res.status(404).json({ message: "Member not found" });
-
-    await logAudit({ user: req.user, action: "VIEW_MEMBER", target: member._id.toString(), req });
-
+    if (!member) return res.status(404).json({ error: "Member not found" });
     res.json(member);
   } catch (err) {
-    console.error("getMemberById:", err);
-    await logAudit({ user: req.user, action: "VIEW_MEMBER_FAILED", target: err.message, req });
-    res.status(500).json({ message: "Failed to fetch member" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch member." });
   }
 };
 
-/* ADD MEMBER */
-export const addMember = async (req, res) => {
-  try {
-    const { firstName, lastName, email, role } = req.body;
-    if (!firstName || !lastName || !email) return res.status(400).json({ message: "Missing required fields" });
-
-    const exists = await Member.findOne({ email });
-    if (exists) return res.status(400).json({ message: "Member already exists" });
-
-    const member = await Member.create({ firstName, lastName, email, role: role || "user" });
-
-    await logAudit({ user: req.user, action: "ADD_MEMBER", target: member._id.toString(), req });
-
-    res.status(201).json({ message: "Member added", member });
-  } catch (err) {
-    console.error("addMember:", err);
-    await logAudit({ user: req.user, action: "ADD_MEMBER_FAILED", target: err.message, req });
-    res.status(500).json({ message: "Failed to add member" });
-  }
-};
-
-/* DELETE MEMBER (ADMIN) */
+// DELETE member
 export const deleteMember = async (req, res) => {
   try {
     const member = await Member.findByIdAndDelete(req.params.id);
-    if (!member) return res.status(404).json({ message: "Member not found" });
-
-    await logAudit({ user: req.user, action: "DELETE_MEMBER", target: member._id.toString(), req });
-
-    res.json({ message: "Member deleted" });
+    if (!member) return res.status(404).json({ error: "Member not found." });
+    res.json({ message: "Member deleted successfully." });
   } catch (err) {
-    console.error("deleteMember:", err);
-    await logAudit({ user: req.user, action: "DELETE_MEMBER_FAILED", target: err.message, req });
-    res.status(500).json({ message: "Failed to delete member" });
+    console.error(err);
+    res.status(500).json({ error: "Failed to delete member." });
   }
 };
 
-/* IMPORT MEMBERS (CSV) */
+// CSV import members (robust)
 export const importMembers = async (req, res) => {
-  if (!req.file) return res.status(400).json({ message: "CSV file required" });
+  try {
+    if (!req.file) return res.status(400).json({ error: "CSV file is required." });
 
-  const members = [];
-  fs.createReadStream(req.file.path)
-    .pipe(csvParser())
-    .on("data", row => {
-      if (row.firstName && row.lastName && row.email) members.push(row);
-    })
-    .on("end", async () => {
-      try {
-        for (const m of members) {
-          const exists = await Member.findOne({ email: m.email });
-          if (!exists) await Member.create(m);
+    const csvData = fs.readFileSync(req.file.path, "utf8");
+
+    Papa.parse(csvData, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const errors = [];
+        const validRows = [];
+
+        for (let i = 0; i < results.data.length; i++) {
+          const row = results.data[i];
+          const firstName = row.firstName?.trim();
+          const lastName = row.lastName?.trim();
+          const email = row.email?.trim() || undefined;
+
+          // Skip rows missing required fields
+          if (!firstName || !lastName) {
+            errors.push(`Row ${i + 1}: Missing firstName or lastName`);
+            continue;
+          }
+
+          validRows.push({ firstName, lastName, email });
         }
-        fs.unlinkSync(req.file.path);
 
-        await logAudit({ user: req.user, action: "IMPORT_MEMBERS", target: `${members.length} records`, req });
+        let insertedCount = 0;
 
-        res.json({ message: "Members imported successfully" });
-      } catch (err) {
-        console.error("importMembers:", err);
-        await logAudit({ user: req.user, action: "IMPORT_MEMBERS_FAILED", target: err.message, req });
-        res.status(500).json({ message: "Failed to import members" });
-      }
+        if (validRows.length > 0) {
+          try {
+            // Use ordered: false to continue on duplicates
+            const result = await Member.insertMany(validRows, { ordered: false });
+            insertedCount = result.length;
+          } catch (err) {
+            // If duplicates exist, still insert the rest
+            if (err.name === "BulkWriteError") {
+              insertedCount = err.result?.nInserted || 0;
+
+              // Collect duplicate email errors
+              err.writeErrors.forEach(e => {
+                if (e.code === 11000) {
+                  const email = e.err?.keyValue?.email || "unknown";
+                  errors.push(`Duplicate email skipped: ${email}`);
+                }
+              });
+            } else {
+              throw err; // other errors
+            }
+          }
+        }
+
+        fs.unlinkSync(req.file.path); // remove temp file
+        res.json({ message: `CSV imported successfully. ${insertedCount} rows added.`, errors });
+      },
     });
+  } catch (err) {
+    console.error("CSV import error:", err);
+    res.status(500).json({ error: "Failed to import CSV." });
+  }
 };
 
-/* EXPORT MEMBERS (CSV) */
+// CSV export members (robust)
 export const exportMembers = async (req, res) => {
   try {
-    const members = await Member.find();
-    const fields = ["firstName", "lastName", "email", "createdAt"];
-    const parser = new Json2CsvParser({ fields });
-    const csv = parser.parse(members);
+    const members = await Member.find({}).sort({ createdAt: 1 }); // optional: sort by creation date
 
-    await logAudit({ user: req.user, action: "EXPORT_MEMBERS", target: `${members.length} records`, req });
+    // Map members to CSV-friendly format
+    const csvData = members.map(m => ({
+      firstName: m.firstName,
+      lastName: m.lastName,
+      email: m.email || "", // blank if email is missing
+    }));
 
+    // Convert to CSV
+    const csv = Papa.unparse(csvData);
+
+    // Send CSV as file download
     res.header("Content-Type", "text/csv");
     res.attachment("members.csv");
     res.send(csv);
   } catch (err) {
-    console.error("exportMembers:", err);
-    await logAudit({ user: req.user, action: "EXPORT_MEMBERS_FAILED", target: err.message, req });
-    res.status(500).json({ message: "Failed to export members" });
+    console.error("CSV export error:", err);
+    res.status(500).json({ error: "Failed to export CSV." });
   }
 };
 
-/* MEMBER GROWTH ANALYTICS */
+
+// Member growth analytics (members added per month)
 export const getMemberGrowth = async (req, res) => {
   try {
     const growth = await Member.aggregate([
-      { $match: { createdAt: { $exists: true } } },
       {
         $group: {
           _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
@@ -166,12 +191,9 @@ export const getMemberGrowth = async (req, res) => {
       { $sort: { "_id.year": 1, "_id.month": 1 } },
     ]);
 
-    await logAudit({ user: req.user, action: "VIEW_MEMBER_GROWTH", req });
-
     res.json(growth);
   } catch (err) {
-    console.error("getMemberGrowth:", err);
-    await logAudit({ user: req.user, action: "VIEW_MEMBER_GROWTH_FAILED", target: err.message, req });
-    res.status(500).json({ message: "Failed to fetch member growth" });
+    console.error("Member growth error:", err);
+    res.status(500).json({ error: "Failed to fetch member growth." });
   }
 };

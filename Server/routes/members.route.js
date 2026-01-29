@@ -3,7 +3,7 @@ import express from "express";
 import {
   getMembers,
   getMemberById,
-  addMember,
+  addMember,          // <-- import the new controller function
   deleteMember,
   importMembers,
   exportMembers,
@@ -12,45 +12,29 @@ import {
 import { protect, adminOnly } from "../middlewares/auth.middleware.js";
 import multer from "multer";
 
-// Setup multer for CSV upload
-const upload = multer({ dest: "uploads/" });
-
 const router = express.Router();
+const upload = multer({ dest: "uploads/" });
 
 // Protect all routes
 router.use(protect);
 
-// ---------------------------
-// CRUD
-// ---------------------------
-
-// GET all members (paginated, searchable, sortable)
+// GET all members
 router.get("/", getMembers);
 
 // GET single member
 router.get("/:id", getMemberById);
 
-// POST add member (admin/librarian)
+// POST add member (admin/librarian) with optional email
 router.post("/", adminOnly, addMember);
 
-// DELETE member (admin only)
+// DELETE member
 router.delete("/:id", adminOnly, deleteMember);
 
-// ---------------------------
-// CSV
-// ---------------------------
-
-// Import members from CSV (admin/librarian)
+// CSV import/export
 router.post("/import", adminOnly, upload.single("file"), importMembers);
-
-// Export members to CSV (admin/librarian)
 router.get("/export", adminOnly, exportMembers);
 
-// ---------------------------
 // Analytics
-// ---------------------------
-
-// Member growth over time
 router.get("/analytics/growth", adminOnly, getMemberGrowth);
 
 export default router;
