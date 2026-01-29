@@ -49,17 +49,30 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
 
     // Hardcoded admin login (testing only)
-    if (email === "admin@test.com" && password === "123456") {
-      return res.json({
-        token: "fake-jwt-token",
-        user: {
-          id: "admin",
-          name: "Admin",
-          email: "admin@test.com",
-          role: "admin",
-        },
-      });
-    }
+   if (email === "admin@test.com" && password === "123456") {
+  const admin = await User.findOne({ email: "admin@test.com" });
+
+  if (!admin) {
+    return res.status(401).json({ message: "Admin not found" });
+  }
+
+  // Generate JWT
+const token = jwt.sign(
+  { id: user._id.toString(), role: user.role }, // always MongoDB ObjectId
+  process.env.JWT_SECRET,                      // production secret, never fallback
+  { expiresIn: "1d" }                          // or your desired expiry
+);
+
+  return res.json({
+    token,
+    user: {
+      id: admin._id,
+      name: admin.name,
+      email: admin.email,
+      role: admin.role,
+    },
+  });
+}
 
     // Find user
     const user = await User.findOne({ email });

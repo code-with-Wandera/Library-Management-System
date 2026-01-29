@@ -6,7 +6,7 @@ import AuditLog from "../models/auditLog.model.js";
  * @param {Object} options
  * @param {Object} options.user - Mongoose User document
  * @param {string} options.action - Action performed, e.g., "ADD_MEMBER"
- * @param {string} [options.target] - Optional target, e.g., member id or file name
+ * @param {string} [options.target] - Optional target
  */
 export const logAudit = async ({ user, action, target }) => {
   try {
@@ -15,14 +15,14 @@ export const logAudit = async ({ user, action, target }) => {
       return;
     }
 
-    const audit = new AuditLog({
-      user: user._id.toString(), // store user id as string
+    await AuditLog.create({
+      user: user._id,   // ✅ store ObjectId, NOT string
       action,
       target,
     });
 
-    await audit.save();
+    console.log("🟢 Audit log saved");
   } catch (err) {
-    console.error("Failed to log audit:", err.message);
+    console.error("Failed to log audit:", err);
   }
 };
