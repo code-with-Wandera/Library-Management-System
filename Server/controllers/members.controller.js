@@ -1,282 +1,224 @@
+// controllers/members.controller.js
 import Member from "../models/members.model.js";
-//import AuditLog from "../models/auditLog.model.js";
 import fs from "fs";
 import csvParser from "csv-parser";
 import { Parser as Json2CsvParser } from "json2csv";
 import { logAudit } from "../utils/auditLog.utils.js";
 
-/**
- * Get all members (paginated, searchable, sortable)
- */
+/* GET MEMBERS (paginated, searchable, sortable) */
 export const getMembers = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    const search = req.query.search || "";
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 10, 100);
+    const search = req.query.search?.trim();
     const sortBy = req.query.sortBy || "createdAt";
-    const order = req.query.order === "desc" ? -1 : 1;
+    const order = req.query.order === "asc" ? 1 : -1;
 
-    const query = search
+    const filter = search
       ? {
           $or: [
-            { firstName: { $regex: search, $options: "i" } },
-            { lastName: { $regex: search, $options: "i" } },
-            { email: { $regex: search, $options: "i" } },
+            { firstName: new RegExp(search, "i") },
+            { lastName: new RegExp(search, "i") },
+            { email: new RegExp(search, "i") },
           ],
         }
       : {};
 
-    const total = await Member.countDocuments(query);
-    const members = await Member.find(query)
+    const total = await Member.countDocuments(filter);
+    const members = await Member.find(filter)
       .sort({ [sortBy]: order })
-      .skip(skip)
+      .skip((page - 1) * limit)
       .limit(limit);
 
-    await AuditLog.create({
+    await logAudit({
+      user: req.user,
       action: "VIEW_MEMBERS",
-      performedBy: req.user?.id || "unknown",
-      details: `Fetched page ${page} of members`,
-      timestamp: new Date(),
+      target: `page=${page}`,
     });
 
     res.json({
-      members: members || [],
-      totalPages: Math.ceil(total / limit),
-      page,
+      data: members,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
     });
   } catch (err) {
-    console.error("Error in getMembers:", err);
-
-    await AuditLog.create({
-      action: "VIEW_MEMBERS_FAILED",
-      performedBy: req.user?.id || "unknown",
-      details: err.message,
-      timestamp: new Date(),
-    }).catch(auditErr => console.error("Failed to log audit:", auditErr));
-
+    console.error("getMembers:", err);
     res.status(500).json({ message: "Failed to fetch members", error: err.message });
   }
 };
 
-/**
- * Get a single member by ID
- */
+/*GET SINGLE MEMBER */
 export const getMemberById = async (req, res) => {
   try {
     const member = await Member.findById(req.params.id);
-    if (!member) return res.status(404).json({ message: "Member not found" });
+    if (!member) {
+      return res.status(404).json({ message: "Member not found" });
+    }
 
-    await AuditLog.create({
+    await logAudit({
+      user: req.user,
       action: "VIEW_MEMBER",
-      performedBy: req.user?.id || "unknown",
-      details: `Viewed member ${member.firstName} ${member.lastName}`,
-      timestamp: new Date(),
+      target: member._id.toString(),
     });
 
     res.json(member);
   } catch (err) {
-    console.error("Error in getMemberById:", err);
-
-    await AuditLog.create({
-      action: "VIEW_MEMBER_FAILED",
-      performedBy: req.user?.id || "unknown",
-      details: err.message,
-      timestamp: new Date(),
-    }).catch(auditErr => console.error("Failed to log audit:", auditErr));
-
+    console.error("getMemberById:", err);
     res.status(500).json({ message: "Failed to fetch member", error: err.message });
   }
 };
 
-/**
- * Add member
- */
-export async function addMember(req, res) {
+/*ADD MEMBER */
+export const addMember = async (req, res) => {
   try {
     const { firstName, lastName, email, role } = req.body;
-    if (!firstName || !lastName || !email)
-      return res.status(400).json({ message: "First name, last name and email are required" });
 
-    const member = new Member({ firstName, lastName, email, role: role || "user" });
-    await member.save();
+    if (!firstName || !lastName || !email) {
+      return res.status(400).json({
+        message: "Missing required fields",
+        required: ["firstName", "lastName", "email"],
+      });
+    }
 
-    await AuditLog.create({
-      action: "ADD_MEMBER",
-      performedBy: req.user?.id || "unknown",
-      details: `Added member ${firstName} ${lastName} (${email})`,
-      timestamp: new Date(),
+    const exists = await Member.findOne({ email });
+    if (exists) {
+      return res.status(400).json({ message: "Member already exists" });
+    }
+
+    const member = await Member.create({
+      firstName,
+      lastName,
+      email,
+      role: role || "user",
     });
 
-    res.status(201).json({ member, message: "Member added successfully" });
+    await logAudit({
+      user: req.user,
+      action: "ADD_MEMBER",
+      target: member._id.toString(),
+      details: `Added member ${firstName} ${lastName}`,
+      ip: req.ip,
+    });
+
+    res.status(201).json({ message: "Member added", member });
   } catch (err) {
-    console.error("Error in addMember:", err);
-
-    await AuditLog.create({
-      action: "ADD_MEMBER_FAILED",
-      performedBy: req.user?.id || "unknown",
-      details: err.message,
-      timestamp: new Date(),
-    }).catch(auditErr => console.error("Failed to log audit:", auditErr));
-
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("addMember:", err);
+    res.status(500).json({ message: "Failed to add member", error: err.message });
   }
-}
+};
 
-/**
- * Delete member (admin only)
- */
+/* DELETEMEMBER*/
 export const deleteMember = async (req, res) => {
   try {
-    const { id } = req.params;
-    const member = await Member.findByIdAndDelete(id);
-    if (!member) return res.status(404).json({ message: "Member not found" });
+    const member = await Member.findByIdAndDelete(req.params.id);
+    if (!member) {
+      return res.status(404).json({ message: "Member not found" });
+    }
 
-    await AuditLog.create({
+    await logAudit({
+      user: req.user,
       action: "DELETE_MEMBER",
-      entity: "Member",
-      entityId: member._id,
-      performedBy: req.user?.username || req.user?.email || "unknown",
-      timestamp: new Date(),
+      target: member._id.toString(),
+      details: `Deleted member ${member.firstName} ${member.lastName}`,
+      ip: req.ip,
     });
 
     res.json({ message: "Member deleted" });
   } catch (err) {
-    console.error("Error in deleteMember:", err);
-
-    await AuditLog.create({
-      action: "DELETE_MEMBER_FAILED",
-      entity: "Member",
-      performedBy: req.user?.username || req.user?.email || "unknown",
-      details: err.message,
-      timestamp: new Date(),
-    }).catch(auditErr => console.error("Failed to log audit:", auditErr));
-
+    console.error("deleteMember:", err);
     res.status(500).json({ message: "Failed to delete member", error: err.message });
   }
 };
 
-/**
- * Import members from CSV (admin only)
- */
+/* IMPORT MEMBERS (CSV) */
 export const importMembers = async (req, res) => {
-  if (!req.file) return res.status(400).json({ message: "No CSV file uploaded" });
+  if (!req.file) {
+    return res.status(400).json({ message: "CSV file required" });
+  }
 
   const members = [];
+
   fs.createReadStream(req.file.path)
     .pipe(csvParser())
-    .on("data", row => {
-      if (row.firstName && row.lastName && row.email) members.push(row);
+    .on("data", (row) => {
+      if (row.firstName && row.lastName && row.email) {
+        members.push(row);
+      }
     })
     .on("end", async () => {
       try {
         for (const m of members) {
           const exists = await Member.findOne({ email: m.email });
-          if (!exists) await Member.create(m);
+          if (!exists) {
+            await Member.create(m);
+          }
         }
+
         fs.unlinkSync(req.file.path);
 
-        await AuditLog.create({
+        await logAudit({
+          user: req.user,
           action: "IMPORT_MEMBERS",
-          performedBy: req.user?.id || "unknown",
-          details: `Imported ${members.length} members from CSV`,
-          timestamp: new Date(),
+          target: `${members.length} records`,
         });
 
-        res.json({ message: "CSV imported successfully" });
+        res.json({ message: "Members imported successfully", count: members.length });
       } catch (err) {
-        console.error("Error in importMembers:", err);
-        res.status(500).json({ message: "Failed to import CSV", error: err.message });
+        console.error("importMembers:", err);
+        res.status(500).json({ message: "Failed to import members", error: err.message });
       }
     });
 };
 
-/**
- * Export members to CSV (admin only)
- */
+/* EXPORT MEMBERS (CSV)*/
 export const exportMembers = async (req, res) => {
   try {
     const members = await Member.find();
     const fields = ["firstName", "lastName", "email", "createdAt"];
-    const json2csvParser = new Json2CsvParser({ fields });
-    const csv = json2csvParser.parse(members);
+    const parser = new Json2CsvParser({ fields });
+    const csv = parser.parse(members);
 
-    await AuditLog.create({
+    await logAudit({
+      user: req.user,
       action: "EXPORT_MEMBERS",
-      performedBy: req.user?.id || "unknown",
-      details: `Exported ${members.length} members to CSV`,
-      timestamp: new Date(),
+      target: `${members.length} records`,
     });
 
     res.header("Content-Type", "text/csv");
     res.attachment("members.csv");
     res.send(csv);
   } catch (err) {
-    console.error("Error in exportMembers:", err);
-    res.status(500).json({ message: "Failed to export CSV", error: err.message });
+    console.error("exportMembers:", err);
+    res.status(500).json({ message: "Failed to export members", error: err.message });
   }
 };
 
-/**
- * Member analytics
- */
-export const getMemberAnalytics = async (req, res) => {
-  try {
-    const members = await Member.find().sort({ createdAt: 1 });
-    let total = 0;
-    const growth = members.map(m => {
-      total += 1;
-      return { date: m.createdAt.toISOString().split("T")[0], total };
-    });
-
-    await AuditLog.create({
-      action: "VIEW_MEMBER_ANALYTICS",
-      performedBy: req.user?.id || "unknown",
-      details: `Viewed member analytics`,
-      timestamp: new Date(),
-    });
-
-    res.json(growth);
-  } catch (err) {
-    console.error("Error in getMemberAnalytics:", err);
-    res.status(500).json({ message: "Failed to fetch analytics", error: err.message });
-  }
-};
-
-/**
- * Member growth over time (line chart)
- */
+/* MEMBER GROWTH ANALYTICS*/
 export const getMemberGrowth = async (req, res) => {
   try {
     const growth = await Member.aggregate([
-      { $match: { createdAt: { $exists: true, $ne: null } } },
+      { $match: { createdAt: { $exists: true } } },
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m", date: "$createdAt" } },
+          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
           count: { $sum: 1 },
         },
       },
-      { $sort: { _id: 1 } },
+      { $sort: { "_id.year": 1, "_id.month": 1 } },
     ]);
 
-    await AuditLog.create({
+    await logAudit({
+      user: req.user,
       action: "VIEW_MEMBER_GROWTH",
-      performedBy: req.user?.id || "unknown",
-      details: `Viewed member growth over time`,
-      timestamp: new Date(),
     });
 
     res.json(growth);
   } catch (err) {
-    console.error("Error in getMemberGrowth:", err);
-
-    await AuditLog.create({
-      action: "VIEW_MEMBER_GROWTH_FAILED",
-      performedBy: req.user?.id || "unknown",
-      details: err.message,
-      timestamp: new Date(),
-    }).catch(auditErr => console.error("Failed to log audit:", auditErr));
-
-    res.status(500).json({ message: "Failed to get member growth", error: err.message });
+    console.error("getMemberGrowth:", err);
+    res.status(500).json({ message: "Failed to fetch member growth", error: err.message });
   }
 };

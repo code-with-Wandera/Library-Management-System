@@ -1,4 +1,5 @@
 import express from "express";
+import multer from "multer";
 import {
   getMembers,
   getMemberById,
@@ -6,47 +7,27 @@ import {
   deleteMember,
   importMembers,
   exportMembers,
-  getMemberAnalytics,
   getMemberGrowth,
 } from "../controllers/members.controller.js";
 import { protect, adminOnly } from "../middlewares/auth.middleware.js";
-import multer from "multer";
-import { logAudit } from "../utils/auditLog.utils.js";
-// Setup multer for CSV upload
-const upload = multer({ dest: "uploads/" });
 
 const router = express.Router();
+const upload = multer({ dest: "uploads/" });
 
-// All routes protected
+// All routes require authentication
 router.use(protect);
 
-// ============================
-// CRUD Routes
-// ============================
-
-// Get all members (paginated)
+// CRUD
 router.get("/", getMembers);
-
-// Get single member by ID
 router.get("/:id", getMemberById);
-
-// Add member (admin only)
 router.post("/", adminOnly, addMember);
-
-// Delete member (admin only)
 router.delete("/:id", adminOnly, deleteMember);
 
-// CSV Import/Export
-// Import members from CSV (admin only)
+// CSV
 router.post("/import", adminOnly, upload.single("file"), importMembers);
-
-// Export members to CSV (admin only)
 router.get("/export", adminOnly, exportMembers);
 
-// Member analytics
-router.get("/analytics/data", adminOnly, getMemberAnalytics);
-
-// Member growth over time
+// Analytics
 router.get("/analytics/growth", adminOnly, getMemberGrowth);
 
 export default router;

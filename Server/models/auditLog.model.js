@@ -1,20 +1,19 @@
-// models/auditLog.model.js
 import mongoose from "mongoose";
 
-const auditLogSchema = new mongoose.Schema({
-  user: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "User",  // Reference the User collection
-    required: true 
+const auditLogSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: false },
+    action: { type: String, required: true },
+    target: { type: String }, // e.g., "member_id", "page=2"
+    details: { type: String },
+    ip: { type: String }, // optional, useful for production logs
   },
-  action: { type: String, required: true },  // e.g., "ADD_MEMBER"
-  target: { type: String },                   // e.g., member id or CSV file name
-  timestamp: { type: Date, default: Date.now },
-});
+  { timestamps: true }
+);
 
-// Optional: create indexes for faster queries
+// Indexes for faster searches
 auditLogSchema.index({ user: 1 });
-auditLogSchema.index({ timestamp: -1 });
+auditLogSchema.index({ action: 1 });
+auditLogSchema.index({ createdAt: -1 });
 
-const AuditLog = mongoose.model("AuditLog", auditLogSchema);
-export default AuditLog;
+export default mongoose.model("AuditLog", auditLogSchema);

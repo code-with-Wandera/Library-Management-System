@@ -7,23 +7,19 @@ const memberSchema = new mongoose.Schema(
     email: {
       type: String,
       required: true,
-      unique: true,          //keep this
-      trim: true,
+      unique: true,
       lowercase: true,
-      match: /^\S+@\S+\.\S+$/,
+      trim: true,
+      match: /^\S+@\S+\.\S+$/, // simple email validation
     },
     role: { type: String, enum: ["user", "admin"], default: "user" },
   },
   { timestamps: true }
 );
 
-// Prevent duplicate full names (case-insensitive)
-memberSchema.index(
-  { firstName: 1, lastName: 1 },
-  { unique: true, collation: { locale: "en", strength: 2 } }
-);
-
-// REMOVE THIS — it duplicates the field-level index
-// memberSchema.index({ email: 1 }, { unique: true });
+// Indexes for faster queries
+memberSchema.index({ firstName: 1, lastName: 1 }, { unique: true, collation: { locale: "en", strength: 2 } });
+memberSchema.index({ email: 1 }, { unique: true });
+memberSchema.index({ createdAt: 1 });
 
 export default mongoose.model("Member", memberSchema);
