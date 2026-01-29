@@ -9,7 +9,7 @@ const router = express.Router();
 /**Register a new user*/
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ message: "All fields are required" });
@@ -26,7 +26,7 @@ router.post("/register", async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      role: role || "user",
+      role: "user",
     });
 
     res.status(201).json({

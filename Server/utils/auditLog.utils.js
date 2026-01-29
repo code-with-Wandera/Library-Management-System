@@ -10,19 +10,14 @@ import AuditLog from "../models/auditLog.model.js";
  */
 export const logAudit = async ({ user, action, target }) => {
   try {
-    if (!user || !user._id) {
-      console.warn("Audit log skipped: user not provided");
-      return;
-    }
+    if (!user?._id) return;
 
-    await AuditLog.create({
-      user: user._id,   // ✅ store ObjectId, NOT string
+    await AuditLogModel.create({
+      user: user._id,
       action,
       target,
     });
-
-    console.log("🟢 Audit log saved");
   } catch (err) {
-    console.error("Failed to log audit:", err);
+    console.error("Audit log failed:", err.message);
   }
 };
