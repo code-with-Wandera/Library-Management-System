@@ -1,32 +1,91 @@
-// Server/routes/auth.routes.js
+// routes/auth.routes.js
 import express from "express";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import User from "../models/user.model.js";
 
 const router = express.Router();
 
-// Dummy users for testing
-const users = [
-  { id: "1", email: "admin@test.com", password: "admin123", role: "admin" },
-  { id: "2", email: "user@test.com", password: "user123", role: "user" },
-];
+/**Register a new user*/
+router.post("/register", async (req, res) => {
+  try {
+    const { name, email, password, role } = req.body;
 
-// POST /api/auth/login
-router.post("/login", (req, res) => {
-  const { email, password } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
 
-  const user = users.find(u => u.email === email && u.password === password);
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ message: "User already exists" });
+    }
 
-  if (!user) {
-    return res.status(401).json({ message: "Invalid email or password" });
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      role: role || "user",
+    });
+
+    res.status(201).json({
+      message: "User registered successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("Register error:", err);
+    res.status(500).json({ message: "Server error" });
   }
+});
 
-  const token = jwt.sign(
-    { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET || "secret123",
-    { expiresIn: "1d" }
-  );
+/**
+ * POST /api/auth/login
+ * Login user (admin or normal user)
+ */
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-  res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password required" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    // JWT ALWAYS USES MONGODB OBJECTID
+    const token = jwt.sign(
+      { id: user._id.toString(), role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 export default router;
