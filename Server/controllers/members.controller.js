@@ -181,19 +181,29 @@ export const exportMembers = async (req, res) => {
 // Member growth analytics (members added per month)
 export const getMemberGrowth = async (req, res) => {
   try {
-    const growth = await Member.aggregate([
+    const growthData = await Member.aggregate([
       {
         $group: {
-          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+          _id: {
+            year: { $year: "$createdAt" },
+            month: { $month: "$createdAt" },
+            day: { $dayOfMonth: "$createdAt" },
+          },
           count: { $sum: 1 },
         },
       },
-      { $sort: { "_id.year": 1, "_id.month": 1 } },
+      { 
+        $sort: { 
+          "_id.year": 1, 
+          "_id.month": 1, 
+          "_id.day": 1 
+        } 
+      },
     ]);
 
-    res.json(growth);
+    res.json(growthData);
   } catch (err) {
-    console.error("Member growth error:", err);
-    res.status(500).json({ error: "Failed to fetch member growth." });
+    console.error("Growth Analytics Error:", err);
+    res.status(500).json({ error: "Failed to fetch growth data" });
   }
 };
