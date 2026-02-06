@@ -29,6 +29,13 @@ export const addBook = async (req, res) => {
     await newBook.save();
     res.status(201).json(newBook);
   } catch (err) {
+    // Check for MongoDB Duplicate Key Error
+    if (err.code === 11000) {
+      return res.status(400).json({ 
+        message: `The book title "${title}" already exists. Please use a unique title.` 
+      });
+    }
+
     console.error("Error adding book:", err);
     res.status(500).json({ message: "Failed to add book" });
   }
