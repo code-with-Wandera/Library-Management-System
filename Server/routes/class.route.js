@@ -4,12 +4,12 @@ import { protect, adminOnly } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-// Public route
-router.get("/classes", getClasses);
+// The path should be "/" because the prefix is already defined in your main server file
+router.get("/", getClasses);
 
 // Admin-only routes
-router.post("/classes", protect, adminOnly, createClass);
-router.patch("/classes/:id", protect, adminOnly, updateClass);
-router.delete("/classes/:id", protect, adminOnly, deleteClass);
+router.post("/", protect, adminOnly, createClass);
+router.patch("/:id", protect, adminOnly, updateClass);
+router.delete("/:id", protect, adminOnly, deleteClass);
 
 export default router;
