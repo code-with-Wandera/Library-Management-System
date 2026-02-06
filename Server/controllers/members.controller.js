@@ -16,7 +16,7 @@ export const addMember = async (req, res) => {
     const newMember = new Member({
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      email: email?.trim() || undefined, // optional email
+      ...(email?.trim() && { email: email.trim() }) // optional email
     });
 
     const savedMember = await newMember.save();

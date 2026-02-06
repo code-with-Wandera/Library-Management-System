@@ -19,7 +19,7 @@ const memberSchema = new mongoose.Schema(
       lowercase: true,
       unique: true,
       sparse: true, // Allows optional unique email
-    },
+    }
   },
   { timestamps: true }
 );
