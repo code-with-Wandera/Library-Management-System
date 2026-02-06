@@ -7,27 +7,41 @@ export const getClasses = async (req, res) => {
     page = Number(page);
     limit = Number(limit);
 
-    if (isNaN(page) || page < 1) page = 1;
-    if (isNaN(limit) || limit < 1) limit = 5;
-    if (limit > 50) limit = 50;
-
-    const query = search ? { name: { $regex: search, $options: "i" } } : {};
     const skip = (page - 1) * limit;
+    const searchFilter = search ? { name: { $regex: search, $options: "i" } } : {};
 
-    const [classes, total] = await Promise.all([
-      Class.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
-      Class.countDocuments(query),
+    // Using aggregation to count members per class
+    const classesWithCounts = await Class.aggregate([
+      { $match: searchFilter },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: "members",      
+          localField: "_id",     
+          foreignField: "classId", 
+          as: "memberList",
+        },
+      },
+      {
+        $addFields: {
+          memberCount: { $size: "$memberList" },
+        },
+      },
+      { $project: { memberList: 0 } }, // Remove the actual member data to keep response light
     ]);
 
+    const total = await Class.countDocuments(searchFilter);
+
     res.status(200).json({
-      data: classes,
+      data: classesWithCounts,
       total,
       page,
       pages: Math.ceil(total / limit),
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to fetch classes" });
+    res.status(500).json({ message: "Failed to fetch class stats" });
   }
 };
 

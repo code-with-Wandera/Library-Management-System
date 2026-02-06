@@ -74,31 +74,55 @@ export const getMembers = async (req, res) => {
 };
 
 
-// Updated getMemberById to show class details
-export const getMemberById = async (req, res) => {
+// Replace assignClass with this:
+export const updateMember = async (req, res) => {
+  const { id } = req.params;
+  
+  // DEBUG LOGS
+  console.log("--- PATCH Request Received ---");
+  console.log("Target ID:", id);
+  console.log("Update Data:", req.body);
+
   try {
-    // .populate('classId') joins the Class data automatically
-    const member = await Member.findById(req.params.id).populate('classId');
-    if (!member) return res.status(404).json({ error: "Member not found" });
-    res.json(member);
+    // We use findByIdAndUpdate to handle the PATCH from frontend
+    const updatedMember = await Member.findByIdAndUpdate(
+      id,
+      { $set: req.body }, // Dynamically updates whatever is sent (classId, email, etc.)
+      { new: true, runValidators: true }
+    ).populate("classId");
+
+    if (!updatedMember) {
+      console.log("Result: Member not found in DB");
+      return res.status(404).json({ error: "Member not found" });
+    }
+
+    console.log("Result: Update Successful");
+    res.json(updatedMember);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch member." });
+    console.error("Update Error:", err);
+    res.status(500).json({ error: "Failed to update member" });
   }
 };
 
-// New function to assign the class
-export const assignClass = async (req, res) => {
+// Fixed getMemberById with Debugging
+export const getMemberById = async (req, res) => {
+  const { id } = req.params;
+  console.log("--- GET Request Received ---");
+  console.log("Searching for ID:", id);
+
   try {
-    const { memberId, classId } = req.body;
-    const member = await Member.findByIdAndUpdate(
-      memberId,
-      { classId: classId || null }, // Allow unassigning by passing null
-      { new: true }
-    ).populate('classId');
+    const member = await Member.findById(id).populate('classId');
     
+    if (!member) {
+      console.log("Result: 404 - Not found in Database");
+      return res.status(404).json({ error: "Member not found" });
+    }
+
+    console.log("Result: 200 - Found member:", member.firstName);
     res.json(member);
   } catch (err) {
-    res.status(500).json({ error: "Assignment failed" });
+    console.error("Fetch Error:", err.message);
+    res.status(500).json({ error: "Failed to fetch member. Check ID format." });
   }
 };
 

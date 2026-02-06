@@ -1,9 +1,9 @@
-// routes/members.route.js
 import express from "express";
 import {
   getMembers,
   getMemberById,
-  addMember,          // <-- import the new controller function
+  addMember,
+  updateMember,      
   deleteMember,
   importMembers,
   exportMembers,
@@ -15,26 +15,21 @@ import multer from "multer";
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
-// Protect all routes
+// 1. Authentication Middleware (Applies to all routes below)
 router.use(protect);
 
-// GET all members
+// 2. Static / Specific Routes (Must come BEFORE dynamic /:id)
+router.get("/analytics/growth", adminOnly, getMemberGrowth);
+router.get("/export", adminOnly, exportMembers);
+router.post("/import", adminOnly, upload.single("file"), importMembers);
+
+// 3. Collection Routes
 router.get("/", getMembers);
-
-// GET single member
-router.get("/:id", getMemberById);
-
-// POST add member (admin/librarian) with optional email
 router.post("/", adminOnly, addMember);
 
-// DELETE member
+// 4. Dynamic ID Routes (Place at the end)
+router.get("/:id", getMemberById);
+router.patch("/:id", adminOnly, updateMember); // Handles class assignments & edits
 router.delete("/:id", adminOnly, deleteMember);
-
-// CSV import/export
-router.post("/import", adminOnly, upload.single("file"), importMembers);
-router.get("/export", adminOnly, exportMembers);
-
-// Analytics
-router.get("/analytics/growth", adminOnly, getMemberGrowth);
 
 export default router;
