@@ -19,6 +19,13 @@ const memberSchema = new mongoose.Schema(
       lowercase: true,
       unique: true,
       sparse: true, // Allows optional unique email
+    },
+
+    //This field allows us to link a member to a class, but its optional befause not all members may belong to a class.
+    classId:{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Class",
+      default: null,
     }
   },
   { timestamps: true }

@@ -34,45 +34,71 @@ export const addMember = async (req, res) => {
 // GET all members with pagination, search, and sort
 export const getMembers = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "", sortBy = "createdAt", order = "desc" } = req.query;
+    const { page = 1, limit = 5, search = "", unassigned = "false" } = req.query;
+    
+    // Build the query object
+    let query = {};
 
-    const query = {
-      $or: [
+    // 1. Handle search
+    if (search) {
+      query.$or = [
         { firstName: { $regex: search, $options: "i" } },
-        { lastName: { $regex: search, $options: "i" } },
-      ],
-    };
+        { lastName: { $regex: search, $options: "i" } }
+      ];
+    }
 
-    const total = await Member.countDocuments(query);
+    // 2. Handle Unassigned filter
+    if (unassigned === "true") {
+      query.classId = { $exists: false }; // or query.classId = null
+    }
 
     const members = await Member.find(query)
-      .sort({ [sortBy]: order === "asc" ? 1 : -1 })
+      .populate("classId") // So we see the class name
+      .limit(limit * 1)
       .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .exec();
+
+    const count = await Member.countDocuments(query);
 
     res.json({
       members,
       pagination: {
-        total,
-        page: Number(page),
-        totalPages: Math.ceil(total / limit),
-      },
+        totalPages: Math.ceil(count / limit),
+        currentPage: page,
+        totalMembers: count
+      }
     });
   } catch (err) {
-    console.error("Get members error:", err);
-    res.status(500).json({ error: "Failed to fetch members." });
+    res.status(500).json({ error: err.message });
   }
 };
 
-// GET single member
+
+// Updated getMemberById to show class details
 export const getMemberById = async (req, res) => {
   try {
-    const member = await Member.findById(req.params.id);
+    // .populate('classId') joins the Class data automatically
+    const member = await Member.findById(req.params.id).populate('classId');
     if (!member) return res.status(404).json({ error: "Member not found" });
     res.json(member);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Failed to fetch member." });
+  }
+};
+
+// New function to assign the class
+export const assignClass = async (req, res) => {
+  try {
+    const { memberId, classId } = req.body;
+    const member = await Member.findByIdAndUpdate(
+      memberId,
+      { classId: classId || null }, // Allow unassigning by passing null
+      { new: true }
+    ).populate('classId');
+    
+    res.json(member);
+  } catch (err) {
+    res.status(500).json({ error: "Assignment failed" });
   }
 };
 

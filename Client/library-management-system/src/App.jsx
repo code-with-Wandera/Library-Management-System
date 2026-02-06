@@ -13,6 +13,7 @@ import BorrowedBooks from "./pages/BorrowedBooks.jsx";
 import Classes from "./pages/Classes.jsx";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthContext } from "./context/AuthContext";
+import MemberDetail from "./pages/MemberDetail";
 
 export default function App() {
   const { user } = useContext(AuthContext);
@@ -105,6 +106,14 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+
+              <Route path="/members/:id" element={
+                <ProtectedRoute user ={user}>
+                  <MemberDetail />
+                </ProtectedRoute>
+              }>
+
+              </Route>
               <Route
                 path="/members/:id"
                 element={
