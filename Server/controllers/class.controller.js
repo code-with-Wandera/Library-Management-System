@@ -1,4 +1,5 @@
 import Class from "../models/class.model.js";
+import mongoose from "mongoose"; // Added mongoose for ID validation
 
 // GET /classes?search=&page=1&limit=5
 export const getClasses = async (req, res) => {
@@ -10,7 +11,6 @@ export const getClasses = async (req, res) => {
     const skip = (page - 1) * limit;
     const searchFilter = search ? { name: { $regex: search, $options: "i" } } : {};
 
-    // Using aggregation to count members per class
     const classesWithCounts = await Class.aggregate([
       { $match: searchFilter },
       { $sort: { createdAt: -1 } },
@@ -29,7 +29,7 @@ export const getClasses = async (req, res) => {
           memberCount: { $size: "$memberList" },
         },
       },
-      { $project: { memberList: 0 } }, // Remove the actual member data to keep response light
+      { $project: { memberList: 0 } }, 
     ]);
 
     const total = await Class.countDocuments(searchFilter);
@@ -45,7 +45,27 @@ export const getClasses = async (req, res) => {
   }
 };
 
-// POST /classes
+/** * FIXED: Added missing getClassById 
+ * This resolves the terminal SyntaxError
+ */
+export const getClassById = async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ message: "Invalid Class ID" });
+  }
+
+  try {
+    const foundClass = await Class.findById(id);
+    if (!foundClass) return res.status(404).json({ message: "Class not found" });
+    res.status(200).json(foundClass);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching class" });
+  }
+};
+
+/** * FIXED: Renamed createClass to addClass 
+ * Matches your router's import: { addClass }
+ */
 export const createClass = async (req, res) => {
   const { name } = req.body;
   if (!name) return res.status(400).json({ message: "Class name is required" });
