@@ -16,15 +16,17 @@ const calculateFine = (dueDate) => {
   return 0;
 };
 
-/** GET /books - fetch all books */
+/** GET /books - fetch all books with borrower details */
 export const getBooks = async (req, res) => {
   try {
     const books = await Book.find()
       .populate({
         path: "borrowedBy",
-        select: "firstName lastName email", // Changed 'name' to 'firstName lastName' to match your Member model
+        select: "firstName lastName email", 
       })
-      .lean(); // Faster performance
+      .sort({ createdAt: -1 }) // Show newest additions first
+      .lean(); 
+
     res.status(200).json(books);
   } catch (err) {
     console.error("Error fetching books:", err);
@@ -34,19 +36,19 @@ export const getBooks = async (req, res) => {
 
 /** POST /books - add a new book */
 export const addBook = async (req, res) => {
-  const { title, author, genre, isAcademic, academicLevel } = req.body;
+  const { title, author, genre, academicLevel } = req.body;
 
-  if (!title?.trim() || !author?.trim()) {
-    return res.status(400).json({ message: "Title and author are required" });
+  // Robust validation
+  if (!title?.trim() || !author?.trim() || !genre?.trim()) {
+    return res.status(400).json({ message: "Title, author, and subject (genre) are required" });
   }
 
   try {
     const newBook = new Book({
       title: title.trim(),
       author: author.trim(),
-      genre: genre || "General",
-      isAcademic: isAcademic || false,
-      academicLevel: academicLevel || "Non-academic", 
+      genre: genre.trim(), // Acts as our "Folder"
+      academicLevel: academicLevel || "Primary", 
       status: "available"
     });
 
@@ -54,7 +56,7 @@ export const addBook = async (req, res) => {
     res.status(201).json(newBook);
   } catch (err) {
     if (err.code === 11000) {
-      return res.status(400).json({ message: `The book title "${title}" already exists.` });
+      return res.status(400).json({ message: "This book title already exists in the system." });
     }
     res.status(500).json({ message: "Failed to add book" });
   }
@@ -70,7 +72,7 @@ export const updateBook = async (req, res) => {
   try {
     const updatedBook = await Book.findByIdAndUpdate(
       id,
-      { $set: req.body }, // Dynamic update
+      { $set: req.body }, 
       { new: true, runValidators: true }
     ).populate({ path: "borrowedBy", select: "firstName lastName email" });
 
@@ -102,10 +104,12 @@ export const issueBook = async (req, res) => {
   const { id } = req.params;
   const { memberId, days = 14 } = req.body;
 
+  if (!memberId) return res.status(400).json({ message: "Member ID is required to issue a book" });
+
   try {
     const book = await Book.findById(id);
     if (!book) return res.status(404).json({ message: "Book not found" });
-    if (book.status === "issued") return res.status(400).json({ message: "Book already issued" });
+    if (book.status === "issued") return res.status(400).json({ message: "This book is already with another member" });
 
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + parseInt(days));
@@ -115,7 +119,10 @@ export const issueBook = async (req, res) => {
     book.dueDate = dueDate;
 
     await book.save();
-    res.status(200).json(book);
+    
+    // Return populated book so UI updates correctly
+    const populatedBook = await Book.findById(book._id).populate("borrowedBy", "firstName lastName");
+    res.status(200).json(populatedBook);
   } catch (err) {
     res.status(500).json({ message: "Failed to issue book" });
   }
@@ -126,22 +133,29 @@ export const returnBook = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const book = await Book.findById(id);
+    // We populate borrowedBy BEFORE clearing it so we can send the name back for the receipt
+    const book = await Book.findById(id).populate("borrowedBy", "firstName lastName");
+    
     if (!book) return res.status(404).json({ message: "Book not found" });
+    if (book.status === "available") return res.status(400).json({ message: "Book is already in the library" });
 
     const fine = calculateFine(book.dueDate);
+    const borrowerData = book.borrowedBy; // Save borrower name for the fine receipt
 
     book.borrowedBy = null;
     book.status = "available";
     book.dueDate = null;
 
     await book.save();
+
     res.status(200).json({ 
       message: fine > 0 ? `Book returned. Fine: $${fine}` : "Book returned successfully", 
       book,
-      fine 
+      fine,
+      borrower: borrowerData ? `${borrowerData.firstName} ${borrowerData.lastName}` : "Unknown Member"
     });
   } catch (err) {
+    console.error("Return Error:", err);
     res.status(500).json({ message: "Failed to return book" });
   }
 };
