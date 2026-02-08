@@ -1,64 +1,69 @@
-// controllers/members.controller.js
 import Member from "../models/members.model.js";
-import fs from "fs";
+import fs from "fs/promises"; // Use promises for non-blocking I/O
+import mongoose from "mongoose";
 import Papa from "papaparse";
 
-// ADD / CREATE MEMBER
+/** ADD / CREATE MEMBER */
 export const addMember = async (req, res) => {
   try {
-    const { firstName, lastName, email } = req.body;
+    const { firstName, lastName, email, classId } = req.body;
 
-    // Ensure required fields
-    if (!firstName || !lastName) {
+    if (!firstName?.trim() || !lastName?.trim()) {
       return res.status(400).json({ error: "First name and last name are required." });
     }
 
     const newMember = new Member({
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      ...(email?.trim() && { email: email.trim() }) // optional email
+      email: email?.trim().toLowerCase() || undefined,
+      classId: classId || null
     });
 
     const savedMember = await newMember.save();
     res.status(201).json(savedMember);
   } catch (err) {
-    console.error("Error creating member:", err);
-    // Handle duplicate email error
     if (err.code === 11000) {
       return res.status(400).json({ error: "Email already exists." });
     }
+    console.error("Member Creation Error:", err);
     res.status(500).json({ error: "Failed to create member." });
   }
 };
 
-// GET all members with pagination, search, and sort
+/** GET all members with pagination, search, and sort */
 export const getMembers = async (req, res) => {
   try {
-    const { page = 1, limit = 5, search = "", unassigned = "false" } = req.query;
+    let { page = 1, limit = 10, search = "", unassigned = "false" } = req.query;
     
-    // Build the query object
+    // Ensure numeric values for pagination
+    page = parseInt(page);
+    limit = parseInt(limit);
+
     let query = {};
 
-    // 1. Handle search
+    // 1. Handle search with basic regex escaping to prevent injection
     if (search) {
+      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.$or = [
-        { firstName: { $regex: search, $options: "i" } },
-        { lastName: { $regex: search, $options: "i" } }
+        { firstName: { $regex: safeSearch, $options: "i" } },
+        { lastName: { $regex: safeSearch, $options: "i" } }
       ];
     }
 
     // 2. Handle Unassigned filter
     if (unassigned === "true") {
-      query.classId = { $exists: false }; // or query.classId = null
+      query.classId = null;
     }
 
-    const members = await Member.find(query)
-      .populate("classId") // So we see the class name
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .exec();
-
-    const count = await Member.countDocuments(query);
+    const [members, count] = await Promise.all([
+      Member.find(query)
+        .populate("classId")
+        .limit(limit)
+        .skip((page - 1) * limit)
+        .sort({ createdAt: -1 }) // Newest first
+        .lean(), // Better performance for read-only
+      Member.countDocuments(query)
+    ]);
 
     res.json({
       members,
@@ -69,166 +74,140 @@ export const getMembers = async (req, res) => {
       }
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to fetch members" });
   }
 };
 
-
-// Replace assignClass with this:
+/** UPDATE Member */
 export const updateMember = async (req, res) => {
   const { id } = req.params;
-  
-  // DEBUG LOGS
-  console.log("--- PATCH Request Received ---");
-  console.log("Target ID:", id);
-  console.log("Update Data:", req.body);
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid Member ID format" });
+  }
 
   try {
-    // We use findByIdAndUpdate to handle the PATCH from frontend
     const updatedMember = await Member.findByIdAndUpdate(
       id,
-      { $set: req.body }, // Dynamically updates whatever is sent (classId, email, etc.)
+      { $set: req.body },
       { new: true, runValidators: true }
     ).populate("classId");
 
-    if (!updatedMember) {
-      console.log("Result: Member not found in DB");
-      return res.status(404).json({ error: "Member not found" });
-    }
+    if (!updatedMember) return res.status(404).json({ error: "Member not found" });
 
-    console.log("Result: Update Successful");
     res.json(updatedMember);
   } catch (err) {
-    console.error("Update Error:", err);
+    if (err.code === 11000) return res.status(400).json({ error: "Email already in use" });
     res.status(500).json({ error: "Failed to update member" });
   }
 };
 
-// Fixed getMemberById with Debugging
+/** GET Member by ID */
 export const getMemberById = async (req, res) => {
   const { id } = req.params;
-  console.log("--- GET Request Received ---");
-  console.log("Searching for ID:", id);
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ error: "Invalid Member ID format" });
+  }
 
   try {
     const member = await Member.findById(id).populate('classId');
-    
-    if (!member) {
-      console.log("Result: 404 - Not found in Database");
-      return res.status(404).json({ error: "Member not found" });
-    }
-
-    console.log("Result: 200 - Found member:", member.firstName);
+    if (!member) return res.status(404).json({ error: "Member not found" });
     res.json(member);
   } catch (err) {
-    console.error("Fetch Error:", err.message);
-    res.status(500).json({ error: "Failed to fetch member. Check ID format." });
+    res.status(500).json({ error: "Internal server error" });
   }
 };
 
-// DELETE member
+/** DELETE Member */
 export const deleteMember = async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid ID" });
+
   try {
-    const member = await Member.findByIdAndDelete(req.params.id);
+    const member = await Member.findByIdAndDelete(id);
     if (!member) return res.status(404).json({ error: "Member not found." });
     res.json({ message: "Member deleted successfully." });
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: "Failed to delete member." });
   }
 };
 
-// CSV import members (robust)
+/** CSV Import */
 export const importMembers = async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "CSV file is required." });
+
   try {
-    if (!req.file) return res.status(400).json({ error: "CSV file is required." });
+    const csvBuffer = await fs.readFile(req.file.path, "utf8");
 
-    const csvData = fs.readFileSync(req.file.path, "utf8");
-
-    Papa.parse(csvData, {
+    Papa.parse(csvBuffer, {
       header: true,
       skipEmptyLines: true,
       complete: async (results) => {
         const errors = [];
         const validRows = [];
 
-        for (let i = 0; i < results.data.length; i++) {
-          const row = results.data[i];
+        results.data.forEach((row, i) => {
           const firstName = row.firstName?.trim();
           const lastName = row.lastName?.trim();
-          const email = row.email?.trim() || undefined;
+          const email = row.email?.trim()?.toLowerCase();
 
-          // Skip rows missing required fields
           if (!firstName || !lastName) {
-            errors.push(`Row ${i + 1}: Missing firstName or lastName`);
-            continue;
+            errors.push(`Row ${i + 1}: Missing required names`);
+          } else {
+            validRows.push({ firstName, lastName, email });
           }
-
-          validRows.push({ firstName, lastName, email });
-        }
+        });
 
         let insertedCount = 0;
-
         if (validRows.length > 0) {
           try {
-            // Use ordered: false to continue on duplicates
             const result = await Member.insertMany(validRows, { ordered: false });
             insertedCount = result.length;
           } catch (err) {
-            // If duplicates exist, still insert the rest
-            if (err.name === "BulkWriteError") {
-              insertedCount = err.result?.nInserted || 0;
-
-              // Collect duplicate email errors
+            insertedCount = err.result?.nInserted || 0;
+            if (err.writeErrors) {
               err.writeErrors.forEach(e => {
-                if (e.code === 11000) {
-                  const email = e.err?.keyValue?.email || "unknown";
-                  errors.push(`Duplicate email skipped: ${email}`);
-                }
+                const email = e.err?.keyValue?.email || "unknown";
+                errors.push(`Duplicate email skipped: ${email}`);
               });
-            } else {
-              throw err; // other errors
             }
           }
         }
 
-        fs.unlinkSync(req.file.path); // remove temp file
-        res.json({ message: `CSV imported successfully. ${insertedCount} rows added.`, errors });
+        await fs.unlink(req.file.path); // Non-blocking cleanup
+        res.json({ message: `Import complete. ${insertedCount} members added.`, errors });
       },
     });
   } catch (err) {
-    console.error("CSV import error:", err);
-    res.status(500).json({ error: "Failed to import CSV." });
+    if (req.file) await fs.unlink(req.file.path);
+    res.status(500).json({ error: "Failed to process CSV file" });
   }
 };
 
-// CSV export members (robust)
+/** CSV Export */
 export const exportMembers = async (req, res) => {
   try {
-    const members = await Member.find({}).sort({ createdAt: 1 }); // optional: sort by creation date
+    const members = await Member.find({}).sort({ lastName: 1 }).lean();
 
-    // Map members to CSV-friendly format
     const csvData = members.map(m => ({
-      firstName: m.firstName,
-      lastName: m.lastName,
-      email: m.email || "", // blank if email is missing
+      FirstName: m.firstName,
+      LastName: m.lastName,
+      Email: m.email || "N/A",
+      Status: m.status || "active"
     }));
 
-    // Convert to CSV
     const csv = Papa.unparse(csvData);
 
-    // Send CSV as file download
     res.header("Content-Type", "text/csv");
-    res.attachment("members.csv");
+    res.attachment("library_members_export.csv");
     res.send(csv);
   } catch (err) {
-    console.error("CSV export error:", err);
-    res.status(500).json({ error: "Failed to export CSV." });
+    res.status(500).json({ error: "Failed to generate export" });
   }
 };
 
-
-// Member growth analytics (members added per month)
+/** Growth Analytics */
 export const getMemberGrowth = async (req, res) => {
   try {
     const growthData = await Member.aggregate([
@@ -242,18 +221,10 @@ export const getMemberGrowth = async (req, res) => {
           count: { $sum: 1 },
         },
       },
-      { 
-        $sort: { 
-          "_id.year": 1, 
-          "_id.month": 1, 
-          "_id.day": 1 
-        } 
-      },
+      { $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 } },
     ]);
-
     res.json(growthData);
   } catch (err) {
-    console.error("Growth Analytics Error:", err);
-    res.status(500).json({ error: "Failed to fetch growth data" });
+    res.status(500).json({ error: "Analytics unavailable" });
   }
 };

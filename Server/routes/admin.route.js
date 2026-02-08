@@ -1,23 +1,26 @@
-// routes/admin.routes.js
 import express from "express";
-import { adminOnly, verifyToken } from "../middlewares/auth.middleware.js";
+import { 
+  getStats, 
+  getRecentBorrows, 
+  getTopBorrowers, 
+  getMostBorrowedBooks 
+} from "../controllers/admin.controller.js";
+import { verifyToken, adminOnly } from "../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-router.get("/stats", verifyToken, adminOnly, (req, res) => {
-  res.json({ totalBooks: 100, totalMembers: 50 });
-});
+/** * SECURITY MIDDLEWARE
+ * Applies to all routes in this file. 
+ * verifyToken ensures they are logged in.
+ * adminOnly ensures they have the correct permissions.
+ */
+router.use(verifyToken);
+router.use(adminOnly);
 
-router.get("/recent-borrows", verifyToken, adminOnly, (req, res) => {
-  res.json([{ member: "John Doe", book: "Maths 101" }]);
-});
-
-router.get("/top-borrowers", verifyToken, adminOnly, (req, res) => {
-  res.json([{ member: "Jane Doe", borrows: 5 }]);
-});
-
-router.get("/most-borrowed-books", verifyToken, adminOnly, (req, res) => {
-  res.json([{ book: "English 101", borrows: 10 }]);
-});
+// Real-time Dashboard Endpoints
+router.get("/stats", getStats);
+router.get("/recent-borrows", getRecentBorrows);
+router.get("/top-borrowers", getTopBorrowers);
+router.get("/most-borrowed-books", getMostBorrowedBooks);
 
 export default router;

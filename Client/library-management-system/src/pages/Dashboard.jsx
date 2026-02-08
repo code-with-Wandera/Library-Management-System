@@ -1,68 +1,152 @@
 import { useEffect, useState } from "react";
 import API from "../api/api";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { 
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
+  LineChart, Line, CartesianGrid 
+} from "recharts";
 
-export default function Dashboard({ books }) {
-  const [stats, setStats] = useState({ borrowed: 0, members: 0, available: 0 });
+export default function Dashboard({ books = [] }) {
+  const [stats, setStats] = useState({ borrowed: 0, members: 0, available: 0, totalFines: 0 });
   const [recentBorrows, setRecentBorrows] = useState([]);
   const [topBorrowers, setTopBorrowers] = useState([]);
   const [mostBorrowedBooks, setMostBorrowedBooks] = useState([]);
+  const [growthData, setGrowthData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { API.get("/admin/stats").then(res => setStats(res.data)).catch(console.error); }, []);
-  useEffect(() => { API.get("/admin/recent-borrows").then(res => setRecentBorrows(res.data)).catch(console.error); }, []);
-  useEffect(() => { API.get("/admin/top-borrowers").then(res => setTopBorrowers(res.data)).catch(console.error); }, []);
-  useEffect(() => { API.get("/admin/most-borrowed-books").then(res => setMostBorrowedBooks(res.data)).catch(console.error); }, []);
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        // Parallel fetching for production performance
+        const [s, rb, tb, mb, gr] = await Promise.all([
+          API.get("/admin/stats"),
+          API.get("/admin/recent-borrows"),
+          API.get("/admin/top-borrowers"),
+          API.get("/admin/most-borrowed-books"),
+          API.get("/members/analytics/growth")
+        ]);
 
-  const chartData = [
+        setStats(s.data);
+        setRecentBorrows(rb.data);
+        setTopBorrowers(tb.data);
+        setMostBorrowedBooks(mb.data);
+        
+        // Format growth data for the chart: { date: "2024-1", count: 5 }
+        setGrowthData(gr.data.map(item => ({
+          date: `${item._id.year}-${item._id.month}`,
+          count: item.count
+        })));
+      } catch (err) {
+        console.error("Dashboard Sync Error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  const statusChartData = [
     { name: "Borrowed", count: stats.borrowed },
-    { name: "Available", count: stats.available || books.length - stats.borrowed },
+    { name: "Available", count: stats.available },
   ];
 
+  if (loading) return <div className="p-10 text-center"><span className="loading loading-dots loading-lg"></span></div>;
+
   return (
-    <div className="p-6 space-y-8">
-      <h1 className="text-3xl font-bold">Dashboard</h1>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="card bg-primary text-primary-content shadow-lg"><div className="card-body"><h2 className="card-title">Total Books</h2><p className="text-4xl">{books.length}</p></div></div>
-        <div className="card bg-secondary text-secondary-content shadow-lg"><div className="card-body"><h2 className="card-title">Borrowed</h2><p className="text-4xl">{stats.borrowed}</p></div></div>
-        <div className="card bg-accent text-accent-content shadow-lg"><div className="card-body"><h2 className="card-title">Members</h2><p className="text-4xl">{stats.members}</p></div></div>
+    <div className="p-6 space-y-8 bg-base-100 min-h-screen">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Library Analytics</h1>
+        <div className="badge badge-outline">{new Date().toLocaleDateString()}</div>
       </div>
 
-      {/* Borrowed vs Available Chart */}
-      <div className="card bg-base-100 shadow-lg p-6">
-        <h2 className="text-2xl font-semibold mb-4">Books Status</h2>
-        <ResponsiveContainer width="100%" height={300}><BarChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}><XAxis dataKey="name" /><YAxis allowDecimals={false} /><Tooltip /><Bar dataKey="count" fill="#4f46e5" /></BarChart></ResponsiveContainer>
+      {/* --- STATS CARDS --- */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="stats shadow bg-primary text-primary-content">
+          <div className="stat">
+            <div className="stat-title text-primary-content opacity-70">Total Books</div>
+            <div className="stat-value">{books.length || 0}</div>
+          </div>
+        </div>
+        
+        <div className="stats shadow bg-secondary text-secondary-content">
+          <div className="stat">
+            <div className="stat-title text-secondary-content opacity-70">Active Loans</div>
+            <div className="stat-value">{stats.borrowed}</div>
+          </div>
+        </div>
+
+        <div className="stats shadow bg-accent text-accent-content">
+          <div className="stat">
+            <div className="stat-title text-accent-content opacity-70">Members</div>
+            <div className="stat-value">{stats.members}</div>
+          </div>
+        </div>
+
+        <div className="stats shadow bg-error text-error-content">
+          <div className="stat">
+            <div className="stat-title text-error-content opacity-70">Pending Fines</div>
+            <div className="stat-value">${stats.totalFines?.toFixed(2) || "0.00"}</div>
+          </div>
+        </div>
       </div>
 
-      {/* Recent Borrows Table */}
-      <div className="card bg-base-100 shadow-lg p-6">
-        <h2 className="text-2xl font-semibold mb-4">Recent Borrowed Books</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* --- BOOK STATUS CHART --- */}
+        <div className="card bg-base-200 shadow-xl p-6">
+          <h2 className="text-xl font-semibold mb-4">Inventory Status</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={statusChartData}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
+              <XAxis dataKey="name" />
+              <YAxis allowDecimals={false} />
+              <Tooltip cursor={{fill: 'transparent'}} />
+              <Bar dataKey="count" fill="#641ae6" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* --- MEMBER GROWTH CHART --- */}
+        <div className="card bg-base-200 shadow-xl p-6">
+          <h2 className="text-xl font-semibold mb-4">Member Registration Growth</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={growthData}>
+              <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+              <XAxis dataKey="date" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="count" stroke="#d926aa" strokeWidth={3} dot={{ r: 6 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* --- RECENT ACTIVITY --- */}
+      <div className="card bg-base-200 shadow-xl overflow-hidden">
+        <div className="p-6 border-b border-base-300 bg-base-300">
+          <h2 className="text-xl font-semibold">Recent Transactions</h2>
+        </div>
         <div className="overflow-x-auto">
           <table className="table w-full">
-            <thead><tr><th>#</th><th>Member</th><th>Book</th><th>Borrowed At</th></tr></thead>
+            <thead className="bg-base-300">
+              <tr>
+                <th>Member</th>
+                <th>Book Title</th>
+                <th>Date</th>
+                <th>Status</th>
+              </tr>
+            </thead>
             <tbody>
-              {recentBorrows.length > 0 ? recentBorrows.map((b,i)=>(
-                <tr key={i}><td>{i+1}</td><td>{b.member}</td><td>{b.book}</td><td>{new Date(b.borrowedAt).toLocaleDateString()}</td></tr>
-              )) : <tr><td colSpan="4" className="text-center">No data</td></tr>}
+              {recentBorrows.map((b, i) => (
+                <tr key={i} className="hover">
+                  <td className="font-medium">{b.member}</td>
+                  <td>{b.book}</td>
+                  <td>{new Date(b.borrowedAt).toLocaleDateString()}</td>
+                  <td><span className="badge badge-success badge-sm">Issued</span></td>
+                </tr>
+              ))}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      {/* Top Borrowers & Most Borrowed Books */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="card bg-base-100 shadow-lg p-6">
-          <h2 className="text-2xl font-semibold mb-4">Top Borrowers</h2>
-          <ul className="list-disc pl-6 space-y-1">
-            {topBorrowers.length > 0 ? topBorrowers.map((u,i)=><li key={i}>{u.member} — {u.borrowCount} books</li>) : "No data available"}
-          </ul>
-        </div>
-        <div className="card bg-base-100 shadow-lg p-6">
-          <h2 className="text-2xl font-semibold mb-4">Most Borrowed Books</h2>
-          <ul className="list-disc pl-6 space-y-1">
-            {mostBorrowedBooks.length > 0 ? mostBorrowedBooks.map((b,i)=><li key={i}>{b.book} — {b.borrowCount} times</li>) : "No data available"}
-          </ul>
         </div>
       </div>
     </div>

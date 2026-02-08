@@ -1,9 +1,9 @@
-// index.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import helmet from "helmet";
 import morgan from "morgan";
+import rateLimit from "express-rate-limit";
 import connectDB from "./config/db.config.js";
 
 // Routes
@@ -21,14 +21,31 @@ connectDB();
 
 const app = express();
 
-// MIDDLEWARE
-app.use(helmet()); // Security headers
-app.use(cors()); // Cross-origin
-app.use(express.json({ limit: "10mb" })); // JSON parser
-app.use(express.urlencoded({ extended: true })); // Form data parser
-app.use(morgan("combined")); // HTTP request logging
+// --- 1. SECURITY & LOGGING ---
+app.use(helmet()); 
+app.use(cors({
+  origin: process.env.CLIENT_URL || "*", // Best practice: restrict to your frontend domain
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  credentials: true
+}));
 
-// ROUTES
+// Rate Limiting: Prevent abuse (100 requests per 15 minutes per IP)
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { message: "Too many requests from this IP, please try again later." }
+});
+app.use("/api/", limiter);
+
+// Log level: 'dev' for readable logs in dev, 'combined' for standard logs in production
+const logFormat = process.env.NODE_ENV === "production" ? "combined" : "dev";
+app.use(morgan(logFormat));
+
+// --- 2. PARSERS ---
+app.use(express.json({ limit: "10mb" })); 
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+// --- 3. ROUTES ---
 app.use("/api/auth", authRoutes);
 app.use("/api/books", bookRoutes);
 app.use("/api/members", memberRoutes);
@@ -36,21 +53,46 @@ app.use("/api/classes", classRoutes);
 app.use("/api/admin", adminRoutes);
 
 // HEALTH CHECK
-app.get("/health", (req, res) => res.json({ status: "ok", timestamp: new Date() }));
+app.get("/health", (req, res) => {
+  res.status(200).json({ 
+    status: "ok", 
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString() 
+  });
+});
 
-// 404 HANDLER
-app.use((req, res, next) => {
+// --- 4. ERROR HANDLING ---
+app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
-// GLOBAL ERROR HANDLER
 app.use((err, req, res, next) => {
-  console.error("Global error handler:", err);
-  res.status(500).json({ message: "Internal server error", error: err.message });
+  const statusCode = err.statusCode || 500;
+  console.error(`[Error] ${err.message}`);
+  
+  res.status(statusCode).json({
+    message: err.message || "Internal server error",
+    stack: process.env.NODE_ENV === "production" ? null : err.stack,
+  });
 });
 
-// START SERVER
+// --- 5. START SERVER & GRACEFUL SHUTDOWN ---
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const server = app.listen(PORT, () => {
+  console.log(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+});
+
+// Handle unhandled promise rejections
+process.on("unhandledRejection", (err) => {
+  console.log(`Error: ${err.message}`);
+  server.close(() => process.exit(1));
+});
+
+// Graceful shutdown for SIGTERM (e.g., during a deployment update)
+process.on("SIGTERM", () => {
+  console.info("SIGTERM signal received. Closing HTTP server...");
+  server.close(() => {
+    console.log("HTTP server closed.");
+    process.exit(0);
+  });
 });

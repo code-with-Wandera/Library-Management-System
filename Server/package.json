@@ -1,39 +1,50 @@
 {
-  "name": "server",
+  "name": "library-management-server",
   "version": "1.0.0",
   "main": "index.js",
   "type": "module",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon index.js"
+  "engines": {
+    "node": ">=18.0.0"
   },
-  "keywords": [],
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "lint": "eslint .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "library",
+    "management",
+    "api",
+    "express",
+    "mongoose"
+  ],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "cors": "^2.8.6",
-    "csv-parser": "^3.2.0",
-    "dotenv": "^17.2.3",
-    "express": "^5.2.1",
-    "helmet": "^8.1.0",
-    "json2csv": "^6.0.0-alpha.2",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.1.5",
-    "morgan": "^1.10.1",
-    "multer": "^2.0.2",
-    "papaparse": "^5.5.3"
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.9.5",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "papaparse": "^5.5.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.9"
   },
   "nodemonConfig": {
     "ignore": [
       "node_modules",
       "uploads",
       ".env",
-      "dist"
-    ]
+      "dist",
+      "*.test.js"
+    ],
+    "delay": 2500
   }
 }
