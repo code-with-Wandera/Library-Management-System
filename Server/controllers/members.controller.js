@@ -9,14 +9,16 @@ export const addMember = async (req, res) => {
     const { firstName, lastName, email, classId } = req.body;
 
     if (!firstName?.trim() || !lastName?.trim()) {
-      return res.status(400).json({ error: "First name and last name are required." });
+      return res
+        .status(400)
+        .json({ error: "First name and last name are required." });
     }
 
     const newMember = new Member({
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       email: email?.trim().toLowerCase() || undefined,
-      classId: classId || null
+      classId: classId || null,
     });
 
     const savedMember = await newMember.save();
@@ -30,11 +32,34 @@ export const addMember = async (req, res) => {
   }
 };
 
+import mongoose from "mongoose";
+import Transaction from "../models/transaction.model.js";
+
+export const getMemberTransactions = async (req, res) => {
+  const { id } = req.params;
+
+  // Validate Mongo ObjectId
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ message: "Invalid member ID" });
+  }
+
+  try {
+    const transactions = await Transaction.find({ memberId: id })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json(transactions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch transactions" });
+  }
+};
+
 /** GET all members with pagination, search, and sort */
 export const getMembers = async (req, res) => {
   try {
     let { page = 1, limit = 10, search = "", unassigned = "false" } = req.query;
-    
+
     // Ensure numeric values for pagination
     page = parseInt(page);
     limit = parseInt(limit);
@@ -43,10 +68,10 @@ export const getMembers = async (req, res) => {
 
     // 1. Handle search with basic regex escaping to prevent injection
     if (search) {
-      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       query.$or = [
         { firstName: { $regex: safeSearch, $options: "i" } },
-        { lastName: { $regex: safeSearch, $options: "i" } }
+        { lastName: { $regex: safeSearch, $options: "i" } },
       ];
     }
 
@@ -62,7 +87,7 @@ export const getMembers = async (req, res) => {
         .skip((page - 1) * limit)
         .sort({ createdAt: -1 }) // Newest first
         .lean(), // Better performance for read-only
-      Member.countDocuments(query)
+      Member.countDocuments(query),
     ]);
 
     res.json({
@@ -70,8 +95,8 @@ export const getMembers = async (req, res) => {
       pagination: {
         totalPages: Math.ceil(count / limit),
         currentPage: page,
-        totalMembers: count
-      }
+        totalMembers: count,
+      },
     });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch members" });
@@ -90,14 +115,16 @@ export const updateMember = async (req, res) => {
     const updatedMember = await Member.findByIdAndUpdate(
       id,
       { $set: req.body },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).populate("classId");
 
-    if (!updatedMember) return res.status(404).json({ error: "Member not found" });
+    if (!updatedMember)
+      return res.status(404).json({ error: "Member not found" });
 
     res.json(updatedMember);
   } catch (err) {
-    if (err.code === 11000) return res.status(400).json({ error: "Email already in use" });
+    if (err.code === 11000)
+      return res.status(400).json({ error: "Email already in use" });
     res.status(500).json({ error: "Failed to update member" });
   }
 };
@@ -111,7 +138,7 @@ export const getMemberById = async (req, res) => {
   }
 
   try {
-    const member = await Member.findById(id).populate('classId');
+    const member = await Member.findById(id).populate("classId");
     if (!member) return res.status(404).json({ error: "Member not found" });
     res.json(member);
   } catch (err) {
@@ -122,7 +149,8 @@ export const getMemberById = async (req, res) => {
 /** DELETE Member */
 export const deleteMember = async (req, res) => {
   const { id } = req.params;
-  if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ error: "Invalid ID" });
+  if (!mongoose.Types.ObjectId.isValid(id))
+    return res.status(400).json({ error: "Invalid ID" });
 
   try {
     const member = await Member.findByIdAndDelete(id);
@@ -135,7 +163,8 @@ export const deleteMember = async (req, res) => {
 
 /** CSV Import */
 export const importMembers = async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "CSV file is required." });
+  if (!req.file)
+    return res.status(400).json({ error: "CSV file is required." });
 
   try {
     const csvBuffer = await fs.readFile(req.file.path, "utf8");
@@ -162,12 +191,14 @@ export const importMembers = async (req, res) => {
         let insertedCount = 0;
         if (validRows.length > 0) {
           try {
-            const result = await Member.insertMany(validRows, { ordered: false });
+            const result = await Member.insertMany(validRows, {
+              ordered: false,
+            });
             insertedCount = result.length;
           } catch (err) {
             insertedCount = err.result?.nInserted || 0;
             if (err.writeErrors) {
-              err.writeErrors.forEach(e => {
+              err.writeErrors.forEach((e) => {
                 const email = e.err?.keyValue?.email || "unknown";
                 errors.push(`Duplicate email skipped: ${email}`);
               });
@@ -176,7 +207,10 @@ export const importMembers = async (req, res) => {
         }
 
         await fs.unlink(req.file.path); // Non-blocking cleanup
-        res.json({ message: `Import complete. ${insertedCount} members added.`, errors });
+        res.json({
+          message: `Import complete. ${insertedCount} members added.`,
+          errors,
+        });
       },
     });
   } catch (err) {
@@ -190,11 +224,11 @@ export const exportMembers = async (req, res) => {
   try {
     const members = await Member.find({}).sort({ lastName: 1 }).lean();
 
-    const csvData = members.map(m => ({
+    const csvData = members.map((m) => ({
       FirstName: m.firstName,
       LastName: m.lastName,
       Email: m.email || "N/A",
-      Status: m.status || "active"
+      Status: m.status || "active",
     }));
 
     const csv = Papa.unparse(csvData);
@@ -207,7 +241,7 @@ export const exportMembers = async (req, res) => {
   }
 };
 
-// Helper function to calculate fines for a member 
+// Helper function to calculate fines for a member
 /** PATCH /members/:id/pay-fine */
 export const payFine = async (req, res) => {
   const { id } = req.params;
@@ -219,18 +253,46 @@ export const payFine = async (req, res) => {
 
     // Business Logic: Prevent negative balances
     if (amount > member.totalFines) {
-      return res.status(400).json({ message: "Payment amount exceeds total fine." });
+      return res
+        .status(400)
+        .json({ message: "Payment amount exceeds total fine." });
     }
-
+    // ... after updating member.totalFines
+    await Transaction.create({
+      memberId: id,
+      type: "payment_received",
+      amount: amount,
+      description: `Cash payment received`,
+    });
     member.totalFines -= amount;
     await member.save();
 
-    res.status(200).json({ 
-      message: "Payment successful", 
-      remainingBalance: member.totalFines 
+    res.status(200).json({
+      message: "Payment successful",
+      remainingBalance: member.totalFines,
     });
   } catch (err) {
     res.status(500).json({ message: "Failed to process payment" });
+  }
+};
+
+export const getFineReportData = async (req, res) => {
+  try {
+    // Find all members who owe money
+    const debtors = await Member.find({ totalFines: { $gt: 0 } })
+      .select("firstName lastName memberId totalFines email")
+      .sort({ totalFines: -1 });
+
+    const totalOutstanding = debtors.reduce((sum, m) => sum + m.totalFines, 0);
+
+    res.status(200).json({
+      generatedAt: new Date(),
+      totalOutstanding,
+      debtorCount: debtors.length,
+      reportData: debtors
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to generate report data" });
   }
 };
 

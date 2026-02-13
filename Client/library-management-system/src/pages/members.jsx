@@ -276,6 +276,18 @@ export default function Members() {
         </div>
       )}
 
+      <div className="card bg-indigo-600 text-white shadow-xl">
+  <div className="card-body items-center text-center">
+    <h2 className="card-title text-2xl font-black">Financial Audit</h2>
+    <p className="opacity-80">Generate a PDF of all members with outstanding balances.</p>
+    <div className="card-actions mt-4">
+      <button onClick={downloadFineReport} className="btn btn-white bg-white text-indigo-600 border-none px-8 rounded-xl hover:bg-gray-100">
+        📥 Download PDF Report
+      </button>
+    </div>
+  </div>
+</div>
+
       <div className="overflow-x-auto border rounded-lg">
         <table className="table w-full">
           <thead>
