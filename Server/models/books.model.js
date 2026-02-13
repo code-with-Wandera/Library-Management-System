@@ -6,7 +6,7 @@ const bookSchema = new mongoose.Schema(
       type: String, 
       required: [true, "Book title is required"], 
       trim: true,
-      index: true // Faster searching by title
+      index: true 
     },
     author: { 
       type: String, 
@@ -19,12 +19,12 @@ const bookSchema = new mongoose.Schema(
       sparse: true, 
       trim: true 
     },
-    
-    // --- CATEGORIZATION ---
     genre: { 
       type: String, 
       required: true, 
       lowercase: true,
+      trim: true,
+      index: true, // IMPORTANT: Your folder view relies on this
       default: "general" 
     },
     academicLevel: {
@@ -33,8 +33,6 @@ const bookSchema = new mongoose.Schema(
       default: "Non-academic",
       index: true
     },
-
-    // --- STATUS & TRACKING ---
     status: {
       type: String,
       enum: ["available", "issued", "overdue", "maintenance"],
@@ -45,16 +43,10 @@ const bookSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Member",
       default: null,
+      index: true // Faster lookups for "Which books does this member have?"
     },
-
-    // --- DATES & FINES ---
-    issueDate: { type: Date },
     dueDate: { type: Date },
-    returnDate: { type: Date },
     fineAmount: { type: Number, default: 0 },
-    
-    // Legacy support (maintained but controlled via hooks)
-    isBorrowed: { type: Boolean, default: false },
   },
   { 
     timestamps: true,
@@ -65,45 +57,20 @@ const bookSchema = new mongoose.Schema(
 
 /**
  * PRODUCTION INDEXING
- * Compound index for common library queries: searching for available books in a specific level
+ * Optimized for the "Folder View": Filters by level AND genre
  */
-bookSchema.index({ status: 1, academicLevel: 1 });
+bookSchema.index({ academicLevel: 1, genre: 1 });
 
-// --- FIXED PRE-SAVE HOOK ---
-// Automatically syncs isBorrowed and Status based on borrowedBy presence
-bookSchema.pre("save", function (next) {
-  if (this.isModified("borrowedBy")) {
-    this.isBorrowed = !!this.borrowedBy;
-    
-    // Auto-set status if not manually overridden
-    if (this.borrowedBy) {
-      this.status = "issued";
-    } else {
-      this.status = "available";
-      this.issueDate = null;
-      this.dueDate = null;
-    }
-  }
-  next();
-});
+/**
+ * Text Index for Search Bar
+ * Allows global search across Title and Author simultaneously
+ */
+bookSchema.index({ title: "text", author: "text" });
 
-// --- FIXED PRE-FINDONEANDUPDATE HOOK ---
-bookSchema.pre("findOneAndUpdate", function (next) {
-  const update = this.getUpdate();
-  
-  // Handle standard update object { borrowedBy: ... }
-  if (update.borrowedBy !== undefined) {
-    update.isBorrowed = !!update.borrowedBy;
-    update.status = update.borrowedBy ? "issued" : "available";
-  }
-  
-  // Handle $set operations if used
-  if (update.$set && update.$set.borrowedBy !== undefined) {
-    update.$set.isBorrowed = !!update.$set.borrowedBy;
-    update.$set.status = update.$set.borrowedBy ? "issued" : "available";
-  }
-
-  next();
+// --- VIRTUALS ---
+// Instead of storing isBorrowed (which can get out of sync), use a Virtual
+bookSchema.virtual("isBorrowed").get(function() {
+  return !!this.borrowedBy;
 });
 
 export default mongoose.model("Book", bookSchema);
