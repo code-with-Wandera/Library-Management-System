@@ -6,18 +6,17 @@ import {
 } from "recharts";
 
 export default function Dashboard({ books = [] }) {
-  const [stats, setStats] = useState({ borrowed: 0, members: 0, available: 0, totalFines: 0 });
-  const [recentBorrows, setRecentBorrows] = useState([]);
-  const [topBorrowers, setTopBorrowers] = useState([]);
-  const [mostBorrowedBooks, setMostBorrowedBooks] = useState([]);
-  const [growthData, setGrowthData] = useState([]);
+  const [data, setData] = useState({
+    stats: { borrowed: 0, members: 0, available: 0, totalFines: 0 },
+    recentBorrows: [],
+    topBorrowers: [],
+    mostBorrowedBooks: [],
+    growth: []
+  });
   const [loading, setLoading] = useState(true);
-  
-  // Defensive: Track if data has already been fetched this session
   const hasFetched = useRef(false);
 
   useEffect(() => {
-    // If we've already fetched in this mount cycle, stop (prevents StrictMode double-trigger)
     if (hasFetched.current) return;
     
     const controller = new AbortController();
@@ -25,32 +24,14 @@ export default function Dashboard({ books = [] }) {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
+        // Single call to the new aggregated endpoint
+        const res = await API.get("/admin/dashboard-data", { signal: controller.signal });
         
-        // Parallel fetching for production performance
-        const [s, rb, tb, mb, gr] = await Promise.all([
-          API.get("/admin/stats", { signal: controller.signal }),
-          API.get("/admin/recent-borrows", { signal: controller.signal }),
-          API.get("/admin/top-borrowers", { signal: controller.signal }),
-          API.get("/admin/most-borrowed-books", { signal: controller.signal }),
-          API.get("/members/analytics/growth", { signal: controller.signal })
-        ]);
-
-        setStats(s.data || { borrowed: 0, members: 0, available: 0, totalFines: 0 });
-        setRecentBorrows(rb.data || []);
-        setTopBorrowers(tb.data || []);
-        setMostBorrowedBooks(mb.data || []);
-        
-        if (gr.data && Array.isArray(gr.data)) {
-          setGrowthData(gr.data.map(item => ({
-            date: item._id ? `${item._id.year}-${item._id.month}` : "N/A",
-            count: item.count || 0
-          })));
-        }
-
+        setData(res.data);
         hasFetched.current = true;
       } catch (err) {
         if (err.name !== 'CanceledError') {
-          console.error("Dashboard Sync Error:", err);
+          console.error("Dashboard Data Fetch Error:", err);
         }
       } finally {
         setLoading(false);
@@ -58,14 +39,12 @@ export default function Dashboard({ books = [] }) {
     };
 
     fetchDashboardData();
-
-    // Cleanup: Cancel requests if component unmounts
     return () => controller.abort();
   }, []);
 
   const statusChartData = [
-    { name: "Borrowed", count: stats.borrowed },
-    { name: "Available", count: stats.available },
+    { name: "Borrowed", count: data.stats.borrowed },
+    { name: "Available", count: data.stats.available },
   ];
 
   if (loading) {
@@ -97,27 +76,27 @@ export default function Dashboard({ books = [] }) {
         <div className="stats shadow bg-secondary text-secondary-content">
           <div className="stat">
             <div className="stat-title text-secondary-content opacity-70">Active Loans</div>
-            <div className="stat-value">{stats.borrowed}</div>
+            <div className="stat-value">{data.stats.borrowed}</div>
           </div>
         </div>
 
         <div className="stats shadow bg-accent text-accent-content">
           <div className="stat">
             <div className="stat-title text-accent-content opacity-70">Members</div>
-            <div className="stat-value">{stats.members}</div>
+            <div className="stat-value">{data.stats.members}</div>
           </div>
         </div>
 
         <div className="stats shadow bg-error text-error-content">
           <div className="stat">
             <div className="stat-title text-error-content opacity-70">Pending Fines</div>
-            <div className="stat-value">${stats.totalFines?.toFixed(2) || "0.00"}</div>
+            <div className="stat-value">${data.stats.totalFines?.toFixed(2) || "0.00"}</div>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* --- BOOK STATUS CHART --- */}
+        {/* --- INVENTORY CHART --- */}
         <div className="card bg-base-200 shadow-xl p-6">
           <h2 className="text-xl font-semibold mb-4">Inventory Status</h2>
           <ResponsiveContainer width="100%" height={300}>
@@ -131,22 +110,22 @@ export default function Dashboard({ books = [] }) {
           </ResponsiveContainer>
         </div>
 
-        {/* --- MEMBER GROWTH CHART --- */}
+        {/* --- GROWTH CHART --- */}
         <div className="card bg-base-200 shadow-xl p-6">
           <h2 className="text-xl font-semibold mb-4">Member Registration Growth</h2>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={growthData}>
+            <LineChart data={data.growth}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
               <XAxis dataKey="date" />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey="count" stroke="#d926aa" strokeWidth={3} dot={{ r: 6 }} activeDot={{ r: 8 }} />
+              <Line type="monotone" dataKey="count" stroke="#d926aa" strokeWidth={3} dot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* --- RECENT ACTIVITY --- */}
+      {/* --- RECENT ACTIVITY TABLE --- */}
       <div className="card bg-base-200 shadow-xl overflow-hidden border border-base-300">
         <div className="p-6 border-b border-base-300 bg-base-300/50">
           <h2 className="text-xl font-semibold">Recent Transactions</h2>
@@ -162,8 +141,8 @@ export default function Dashboard({ books = [] }) {
               </tr>
             </thead>
             <tbody>
-              {recentBorrows.length > 0 ? (
-                recentBorrows.map((b, i) => (
+              {data.recentBorrows.length > 0 ? (
+                data.recentBorrows.map((b, i) => (
                   <tr key={i} className="hover">
                     <td className="font-medium">{b.member}</td>
                     <td>{b.book}</td>
@@ -173,7 +152,7 @@ export default function Dashboard({ books = [] }) {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="4" className="text-center py-10 opacity-50">No recent transactions found.</td>
+                  <td colSpan="4" className="text-center py-10 opacity-50">No activity recorded.</td>
                 </tr>
               )}
             </tbody>
