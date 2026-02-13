@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import API from "../api/api";
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -12,38 +12,55 @@ export default function Dashboard({ books = [] }) {
   const [mostBorrowedBooks, setMostBorrowedBooks] = useState([]);
   const [growthData, setGrowthData] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Defensive: Track if data has already been fetched this session
+  const hasFetched = useRef(false);
 
   useEffect(() => {
+    // If we've already fetched in this mount cycle, stop (prevents StrictMode double-trigger)
+    if (hasFetched.current) return;
+    
+    const controller = new AbortController();
+
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
+        
         // Parallel fetching for production performance
         const [s, rb, tb, mb, gr] = await Promise.all([
-          API.get("/admin/stats"),
-          API.get("/admin/recent-borrows"),
-          API.get("/admin/top-borrowers"),
-          API.get("/admin/most-borrowed-books"),
-          API.get("/members/analytics/growth")
+          API.get("/admin/stats", { signal: controller.signal }),
+          API.get("/admin/recent-borrows", { signal: controller.signal }),
+          API.get("/admin/top-borrowers", { signal: controller.signal }),
+          API.get("/admin/most-borrowed-books", { signal: controller.signal }),
+          API.get("/members/analytics/growth", { signal: controller.signal })
         ]);
 
-        setStats(s.data);
-        setRecentBorrows(rb.data);
-        setTopBorrowers(tb.data);
-        setMostBorrowedBooks(mb.data);
+        setStats(s.data || { borrowed: 0, members: 0, available: 0, totalFines: 0 });
+        setRecentBorrows(rb.data || []);
+        setTopBorrowers(tb.data || []);
+        setMostBorrowedBooks(mb.data || []);
         
-        // Format growth data for the chart: { date: "2024-1", count: 5 }
-        setGrowthData(gr.data.map(item => ({
-          date: `${item._id.year}-${item._id.month}`,
-          count: item.count
-        })));
+        if (gr.data && Array.isArray(gr.data)) {
+          setGrowthData(gr.data.map(item => ({
+            date: item._id ? `${item._id.year}-${item._id.month}` : "N/A",
+            count: item.count || 0
+          })));
+        }
+
+        hasFetched.current = true;
       } catch (err) {
-        console.error("Dashboard Sync Error:", err);
+        if (err.name !== 'CanceledError') {
+          console.error("Dashboard Sync Error:", err);
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchDashboardData();
+
+    // Cleanup: Cancel requests if component unmounts
+    return () => controller.abort();
   }, []);
 
   const statusChartData = [
@@ -51,13 +68,21 @@ export default function Dashboard({ books = [] }) {
     { name: "Available", count: stats.available },
   ];
 
-  if (loading) return <div className="p-10 text-center"><span className="loading loading-dots loading-lg"></span></div>;
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-base-100">
+        <span className="loading loading-dots loading-lg text-primary"></span>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6 space-y-8 bg-base-100 min-h-screen">
+    <div className="p-6 space-y-8 bg-base-100 min-h-screen animate-in fade-in duration-500">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Library Analytics</h1>
-        <div className="badge badge-outline">{new Date().toLocaleDateString()}</div>
+        <h1 className="text-3xl font-bold tracking-tight">Library Analytics</h1>
+        <div className="badge badge-primary badge-outline font-mono">
+          {new Date().toLocaleDateString()}
+        </div>
       </div>
 
       {/* --- STATS CARDS --- */}
@@ -100,7 +125,7 @@ export default function Dashboard({ books = [] }) {
               <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.3} />
               <XAxis dataKey="name" />
               <YAxis allowDecimals={false} />
-              <Tooltip cursor={{fill: 'transparent'}} />
+              <Tooltip cursor={{fill: 'rgba(0,0,0,0.05)'}} />
               <Bar dataKey="count" fill="#641ae6" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -115,20 +140,20 @@ export default function Dashboard({ books = [] }) {
               <XAxis dataKey="date" />
               <YAxis />
               <Tooltip />
-              <Line type="monotone" dataKey="count" stroke="#d926aa" strokeWidth={3} dot={{ r: 6 }} />
+              <Line type="monotone" dataKey="count" stroke="#d926aa" strokeWidth={3} dot={{ r: 6 }} activeDot={{ r: 8 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
 
       {/* --- RECENT ACTIVITY --- */}
-      <div className="card bg-base-200 shadow-xl overflow-hidden">
-        <div className="p-6 border-b border-base-300 bg-base-300">
+      <div className="card bg-base-200 shadow-xl overflow-hidden border border-base-300">
+        <div className="p-6 border-b border-base-300 bg-base-300/50">
           <h2 className="text-xl font-semibold">Recent Transactions</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="table w-full">
-            <thead className="bg-base-300">
+            <thead className="bg-base-300/30">
               <tr>
                 <th>Member</th>
                 <th>Book Title</th>
@@ -137,14 +162,20 @@ export default function Dashboard({ books = [] }) {
               </tr>
             </thead>
             <tbody>
-              {recentBorrows.map((b, i) => (
-                <tr key={i} className="hover">
-                  <td className="font-medium">{b.member}</td>
-                  <td>{b.book}</td>
-                  <td>{new Date(b.borrowedAt).toLocaleDateString()}</td>
-                  <td><span className="badge badge-success badge-sm">Issued</span></td>
+              {recentBorrows.length > 0 ? (
+                recentBorrows.map((b, i) => (
+                  <tr key={i} className="hover">
+                    <td className="font-medium">{b.member}</td>
+                    <td>{b.book}</td>
+                    <td>{new Date(b.borrowedAt).toLocaleDateString()}</td>
+                    <td><span className="badge badge-success badge-sm text-white">Issued</span></td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="4" className="text-center py-10 opacity-50">No recent transactions found.</td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

@@ -1,13 +1,11 @@
-// src/components/ProtectedRoute.jsx
 import { Navigate } from "react-router-dom";
-import { useContext } from "react";
+import { useContext, useEffect } from "react"; // Added useEffect
 import { AuthContext } from "../context/AuthContext";
 import jwt_decode from "jwt-decode";
 
 export default function ProtectedRoute({ user, children }) {
   const { token, logout } = useContext(AuthContext);
 
-  // Check if token is expired
   const isTokenExpired = (token) => {
     if (!token) return true;
     if (token === "fake-jwt-token") return false; 
@@ -21,8 +19,17 @@ export default function ProtectedRoute({ user, children }) {
     }
   };
 
-  if (!user || !token || isTokenExpired(token)) {
-    logout(); 
+  const expired = !user || !token || isTokenExpired(token);
+
+  // Trigger the logout side-effect safely
+  useEffect(() => {
+    if (expired) {
+      logout();
+    }
+  }, [expired, logout]);
+
+  // If expired, redirect. If not, show the protected content.
+  if (expired) {
     return <Navigate to="/login" replace />;
   }
 

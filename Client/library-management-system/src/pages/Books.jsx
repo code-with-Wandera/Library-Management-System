@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import API from "../api/api";
 import BookCard from "../components/BookCard.jsx";
 
@@ -7,8 +7,6 @@ export default function Books() {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
-  
-  // Navigation
   const [activeLevel, setActiveLevel] = useState("Primary");
   const [selectedSubject, setSelectedSubject] = useState(null);
 
@@ -25,13 +23,13 @@ export default function Books() {
   const academicLevels = ["Primary", "Secondary", "College", "University", "Non-academic"];
 
   // --- DATA FETCHING ---
-  const fetchBooks = async () => {
+  const fetchBooks = async (signal) => {
     try {
       setLoading(true);
-      const res = await API.get("/books");
+      const res = await API.get("/books", { signal });
       setBooks(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
-      console.error("Fetch Books Error:", err);
+      if (err.name !== 'CanceledError') console.error("Fetch Books Error:", err);
     } finally {
       setLoading(false);
     }
@@ -46,18 +44,23 @@ export default function Books() {
     }
   };
 
-  useEffect(() => { fetchBooks(); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchBooks(controller.signal);
+    return () => controller.abort();
+  }, []);
+
   useEffect(() => {
     if (memberSearch.length > 1) fetchMembers();
   }, [memberSearch]);
 
-  // --- COMPUTED LOGIC (Performance Optimized) ---
-  const filteredBySearch = useMemo(() => {
-    return books.filter(b => 
+  // --- COMPUTED LOGIC ---
+  const filteredBySearch = useMemo(() => (
+    books.filter(b => 
       b.title.toLowerCase().includes(globalSearch.toLowerCase()) ||
       b.author.toLowerCase().includes(globalSearch.toLowerCase())
-    );
-  }, [books, globalSearch]);
+    )
+  ), [books, globalSearch]);
 
   const levelBooks = useMemo(() => 
     books.filter(b => b.academicLevel === activeLevel), 
@@ -66,6 +69,10 @@ export default function Books() {
   const subjects = useMemo(() => 
     [...new Set(levelBooks.map(b => b.genre || "General"))], 
   [levelBooks]);
+
+  const displayedBooks = useMemo(() => 
+    levelBooks.filter(b => (b.genre || "General") === selectedSubject), 
+  [levelBooks, selectedSubject]);
 
   const stats = useMemo(() => ({
     total: levelBooks.length,
@@ -82,17 +89,14 @@ export default function Books() {
           setReceipt({
             title: book.title,
             borrower: book.borrowedBy ? `${book.borrowedBy.firstName} ${book.borrowedBy.lastName}` : "Unknown",
-            fine: res.data.fine,
-            level: book.academicLevel
+            fine: res.data.fine
           });
           document.getElementById("fine_receipt_modal").showModal();
         } else {
           alert("Return successful!");
         }
         fetchBooks();
-      } catch (err) {
-        alert("Return operation failed.");
-      }
+      } catch (err) { alert("Return failed."); }
     } else {
       setSelectedBook(book);
       document.getElementById("member_picker_modal").showModal();
@@ -105,26 +109,18 @@ export default function Books() {
       document.getElementById("member_picker_modal").close();
       setSelectedBook(null);
       fetchBooks();
-    } catch (err) {
-      alert(err.response?.data?.message || "Issue failed");
-    }
+    } catch (err) { alert(err.response?.data?.message || "Issue failed"); }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     const payload = { ...form, academicLevel: activeLevel };
     try {
-      if (editingId) {
-        await API.put(`/books/${editingId}`, payload);
-      } else {
-        await API.post("/books", payload);
-      }
+      editingId ? await API.put(`/books/${editingId}`, payload) : await API.post("/books", payload);
       document.getElementById('add_book_modal').close();
       resetForm();
       fetchBooks();
-    } catch (err) {
-      alert("Save failed. Please check your connection.");
-    }
+    } catch (err) { alert("Save failed."); }
   };
 
   const handleEdit = (book) => {
@@ -139,21 +135,18 @@ export default function Books() {
   };
 
   const deleteBook = async (id) => {
-    if (!window.confirm("Delete this book permanently?")) return;
-    try {
-      await API.delete(`/books/${id}`);
-      fetchBooks();
-    } catch (err) { alert("Delete failed"); }
+    if (window.confirm("Delete this book?")) {
+      try { await API.delete(`/books/${id}`); fetchBooks(); } catch (err) { alert("Delete failed"); }
+    }
   };
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-base-100 font-sans">
-      
       {/* SIDEBAR */}
       <aside className="w-full md:w-64 bg-base-200 p-5 border-r border-base-300">
         <div className="flex items-center gap-3 mb-8 px-2">
           <div className="bg-primary p-2 rounded-lg text-white">📚</div>
-          <h2 className="text-xl font-black tracking-tight">LIB-SYS</h2>
+          <h2 className="text-xl font-black tracking-tight uppercase">Lib-Sys</h2>
         </div>
         <ul className="menu menu-md p-0 gap-2">
           <p className="text-[10px] font-bold opacity-40 mb-1 ml-4 uppercase tracking-widest">Sectors</p>
@@ -172,7 +165,6 @@ export default function Books() {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 p-8 flex flex-col">
-        {/* TOP BAR */}
         <div className="flex flex-col lg:flex-row justify-between items-center gap-4 mb-8">
           <div className="relative w-full lg:max-w-md">
             <input 
@@ -184,26 +176,25 @@ export default function Books() {
             />
             <span className="absolute left-3 top-3.5 opacity-30">🔍</span>
           </div>
-          <button className="btn btn-primary shadow-lg shadow-primary/20 px-8 rounded-xl" onClick={() => { resetForm(); document.getElementById('add_book_modal').showModal() }}>
+          <button className="btn btn-primary shadow-lg px-8 rounded-xl" onClick={() => { resetForm(); document.getElementById('add_book_modal').showModal() }}>
             + Add New Book
           </button>
         </div>
 
-        {/* VIEW AREA */}
         <section className="flex-1">
           {loading ? (
             <div className="flex justify-center items-center h-64"><span className="loading loading-spinner loading-lg text-primary"></span></div>
           ) : globalSearch ? (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in fade-in duration-500">
-              {filteredBySearch.map(book => <BookCard key={book._id} book={book} onEdit={() => handleEdit(book)} onAction={() => handleAction(book)} onDelete={() => deleteBook(book._id)} />)}
+              {filteredBySearch.map(book => <BookCard key={book._id} book={book} onEdit={handleEdit} onAction={handleAction} onDelete={deleteBook} />)}
             </div>
           ) : !selectedSubject ? (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
               {subjects.map(sub => (
-                <div key={sub} onClick={() => setSelectedSubject(sub)} className="group cursor-pointer bg-base-200 p-8 rounded-3xl border-2 border-transparent hover:border-primary hover:bg-base-100 transition-all text-center shadow-sm hover:shadow-xl">
+                <div key={sub} onClick={() => setSelectedSubject(sub)} className="group cursor-pointer bg-base-200 p-8 rounded-3xl border-2 border-transparent hover:border-primary transition-all text-center shadow-sm hover:shadow-xl">
                   <div className="text-6xl mb-4 group-hover:scale-110 transition-transform">📂</div>
                   <h3 className="font-bold text-lg leading-tight">{sub}</h3>
-                  <p className="text-xs font-bold opacity-40 mt-2 uppercase">{levelBooks.filter(b => b.genre === sub).length} items</p>
+                  <p className="text-xs font-bold opacity-40 mt-2 uppercase">{levelBooks.filter(b => (b.genre || "General") === sub).length} items</p>
                 </div>
               ))}
             </div>
@@ -214,41 +205,37 @@ export default function Books() {
                 <h2 className="text-2xl font-black">{selectedSubject}</h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {displayedBooks.map(book => <BookCard key={book._id} book={book} onEdit={() => handleEdit(book)} onAction={() => handleAction(book)} onDelete={() => deleteBook(book._id)} />)}
+                {displayedBooks.map(book => <BookCard key={book._id} book={book} onEdit={handleEdit} onAction={handleAction} onDelete={deleteBook} />)}
               </div>
             </div>
           )}
         </section>
 
         {/* STATS FOOTER */}
-        <footer className="mt-12">
-          <div className="stats shadow bg-base-200 w-full rounded-3xl">
-            <div className="stat">
-              <div className="stat-title">Current Sector</div>
-              <div className="stat-value text-primary">{activeLevel}</div>
-              <div className="stat-desc">{stats.total} Total Books</div>
-            </div>
-            <div className="stat">
-              <div className="stat-title">Inventory</div>
-              <div className="stat-value text-success">{stats.available}</div>
-              <div className="stat-desc">Available to Borrow</div>
-            </div>
-            <div className="stat">
-              <div className="stat-title">In Circulation</div>
-              <div className="stat-value text-warning">{stats.issued}</div>
-              <div className="stat-desc">Currently with Members</div>
-            </div>
+        <footer className="mt-12 stats shadow bg-base-200 w-full rounded-3xl">
+          <div className="stat">
+            <div className="stat-title">Sector</div>
+            <div className="stat-value text-primary text-2xl">{activeLevel}</div>
+            <div className="stat-desc">{stats.total} Total Books</div>
+          </div>
+          <div className="stat">
+            <div className="stat-title">Inventory</div>
+            <div className="stat-value text-success text-2xl">{stats.available}</div>
+            <div className="stat-desc">Available</div>
+          </div>
+          <div className="stat">
+            <div className="stat-title">Issued</div>
+            <div className="stat-value text-warning text-2xl">{stats.issued}</div>
+            <div className="stat-desc">In Circulation</div>
           </div>
         </footer>
       </main>
 
       {/* --- MODALS --- */}
-      
-      {/* ADD/EDIT MODAL */}
       <dialog id="add_book_modal" className="modal modal-bottom sm:modal-middle">
         <div className="modal-box rounded-3xl">
           <h3 className="font-black text-2xl mb-2">{editingId ? "Edit Book" : "New Entry"}</h3>
-          <p className="text-sm opacity-50 mb-6">Assigning to {activeLevel} Sector</p>
+          <p className="text-sm opacity-50 mb-6 font-medium uppercase tracking-wider">Sector: {activeLevel}</p>
           <form onSubmit={handleSubmit} className="space-y-4">
             <input className="input input-bordered w-full rounded-xl" placeholder="Book Title" value={form.title} onChange={e => setForm({...form, title: e.target.value})} required />
             <input className="input input-bordered w-full rounded-xl" placeholder="Author Name" value={form.author} onChange={e => setForm({...form, author: e.target.value})} required />
@@ -261,7 +248,7 @@ export default function Books() {
         </div>
       </dialog>
 
-      {/* FINE RECEIPT MODAL */}
+      {/* ADDITIONAL MODALS (Fine/Member) REMAIN THE SAME */}
       <dialog id="fine_receipt_modal" className="modal">
         <div className="modal-box border-t-8 border-error rounded-3xl">
           <h3 className="font-black text-2xl text-error mb-6">Overdue Fine</h3>
@@ -276,7 +263,6 @@ export default function Books() {
         </div>
       </dialog>
 
-      {/* MEMBER PICKER MODAL */}
       <dialog id="member_picker_modal" className="modal">
         <div className="modal-box rounded-3xl">
           <h3 className="font-black text-xl mb-4 text-center">Issue Book</h3>

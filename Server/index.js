@@ -13,10 +13,7 @@ import memberRoutes from "./routes/members.route.js";
 import classRoutes from "./routes/class.route.js";
 import adminRoutes from "./routes/admin.route.js";
 
-// Load environment variables
 dotenv.config();
-
-// Connect to MongoDB
 connectDB();
 
 const app = express();
@@ -24,20 +21,25 @@ const app = express();
 // --- 1. SECURITY & LOGGING ---
 app.use(helmet()); 
 app.use(cors({
-  origin: process.env.CLIENT_URL || "*", // Best practice: restrict to your frontend domain
+  origin: process.env.CLIENT_URL || "http://localhost:5173", // Specify your Vite/React port
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   credentials: true
 }));
 
-// Rate Limiting: Prevent abuse (100 requests per 15 minutes per IP)
+// Adjusted Rate Limiter: 
+// 100 requests per 15 mins is tight for a dashboard app.
+// Let's increase this to 500 per 15 mins for development/standard use.
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: { message: "Too many requests from this IP, please try again later." }
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: process.env.NODE_ENV === "production" ? 100 : 1000, 
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: { message: "Too many requests, please try again after 15 minutes." }
 });
+
+// Apply limiter to all routes
 app.use("/api/", limiter);
 
-// Log level: 'dev' for readable logs in dev, 'combined' for standard logs in production
 const logFormat = process.env.NODE_ENV === "production" ? "combined" : "dev";
 app.use(morgan(logFormat));
 
@@ -68,7 +70,8 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
-  console.error(`[Error] ${err.message}`);
+  // Don't log expected 404s as errors in production
+  if (statusCode !== 404) console.error(`[Error] ${err.message}`);
   
   res.status(statusCode).json({
     message: err.message || "Internal server error",
@@ -76,23 +79,24 @@ app.use((err, req, res, next) => {
   });
 });
 
-// --- 5. START SERVER & GRACEFUL SHUTDOWN ---
+// --- 5. START SERVER ---
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+  console.log(`🚀 LIB-SYS Server: Port ${PORT} (${process.env.NODE_ENV || 'dev'})`);
 });
 
-// Handle unhandled promise rejections
-process.on("unhandledRejection", (err) => {
-  console.log(`Error: ${err.message}`);
-  server.close(() => process.exit(1));
-});
-
-// Graceful shutdown for SIGTERM (e.g., during a deployment update)
-process.on("SIGTERM", () => {
-  console.info("SIGTERM signal received. Closing HTTP server...");
+// GRACEFUL SHUTDOWN
+const gracefulShutdown = (signal) => {
+  console.info(`${signal} received. Cleaning up...`);
   server.close(() => {
-    console.log("HTTP server closed.");
+    console.log("HTTP server closed. Process terminated.");
     process.exit(0);
   });
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled Rejection:", err.message);
+  server.close(() => process.exit(1));
 });

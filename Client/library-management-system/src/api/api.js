@@ -1,12 +1,11 @@
 import axios from "axios";
 
-// Create Axios instance
 const API = axios.create({
   baseURL: "http://localhost:5000/api", 
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 10000, // 10 seconds timeout
+  timeout: 10000, 
 });
 
 // Request interceptor to add JWT token
@@ -18,35 +17,52 @@ API.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Response interceptor for error handling
 API.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // Handle common errors here
+  async (error) => {
+    // 1. Handle Request Cancellation (from AbortController)
+    if (axios.isCancel(error)) {
+      console.log("Request canceled:", error.message);
+      return Promise.reject(error);
+    }
+
+    // 2. Handle Network Errors
     if (!error.response) {
       console.error("Network error:", error);
-      return Promise.reject({ message: "Network error. Please try again." });
+      return Promise.reject({ message: "Network error. Please check your connection." });
     }
 
     const { status, data } = error.response;
 
-    if (status === 401) {
-      console.warn("Unauthorized - maybe redirect to login");
-      // Optional: redirect to login page
+    // 3. Handle 429 - Too Many Requests (The fix for your current issue)
+    if (status === 429) {
+      console.error("Rate limit exceeded (429)");
+      // Optional: You could implement a 'wait and retry' logic here
+      return Promise.reject({ 
+        message: "You're moving too fast! Please wait a moment before trying again.",
+        isRateLimit: true 
+      });
     }
 
+    // 4. Handle 401 - Unauthorized
+    if (status === 401) {
+      console.warn("Unauthorized: Session expired or invalid token.");
+      localStorage.removeItem("token"); // Clean up
+      // window.location.href = "/login"; // Force redirect if needed
+    }
+
+    // 5. Handle Server Errors
     if (status >= 500) {
       console.error("Server error:", data);
-      return Promise.reject({ message: "Server error. Please try again later." });
+      return Promise.reject({ message: "Server is currently struggling. Try again later." });
     }
 
-    // Return backend error message
-    return Promise.reject(data);
+    // Return backend error message or default object
+    return Promise.reject(data || { message: "An unexpected error occurred." });
   }
 );
 
