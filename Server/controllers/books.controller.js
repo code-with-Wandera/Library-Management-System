@@ -1,16 +1,34 @@
 import Book from "../models/books.model.js";
 import mongoose from "mongoose";
 
-// Helper: Calculate fines ($1 per day overdue)
+//calculates fine after 3 weeks then $1 will be added every 2 days
 const calculateFine = (dueDate) => {
   if (!dueDate) return 0;
+  
   const now = new Date();
   const due = new Date(dueDate);
-  if (now > due) {
-    const diffTime = Math.abs(now - due);
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+  
+  // 1. Define the 3-week (21 days) Grace Period
+  const gracePeriodMS = 21 * 24 * 60 * 60 * 1000;
+  const fineStartsAt = due.getTime() + gracePeriodMS;
+
+  // 2. Check if we have actually passed that "Fine Start" date
+  if (now.getTime() > fineStartsAt) {
+    // Calculate total days elapsed since the grace period ended
+    const diffTime = now.getTime() - fineStartsAt;
+    const totalDaysOverdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    
+    // 3. Apply the "$1 every 2 days" rule
+    // We use Math.ceil(days / 2) so that:
+    // Day 1 & 2 = $1
+    // Day 3 & 4 = $2
+    // Day 5 & 6 = $3
+    const fineAmount = Math.ceil(totalDaysOverdue / 2);
+    
+    return fineAmount;
   }
-  return 0;
+  
+  return 0; 
 };
 
 /** GET /books - fetch all books */
