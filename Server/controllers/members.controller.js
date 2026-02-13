@@ -207,6 +207,33 @@ export const exportMembers = async (req, res) => {
   }
 };
 
+// Helper function to calculate fines for a member 
+/** PATCH /members/:id/pay-fine */
+export const payFine = async (req, res) => {
+  const { id } = req.params;
+  const { amount } = req.body; // How much the student is paying right now
+
+  try {
+    const member = await Member.findById(id);
+    if (!member) return res.status(404).json({ message: "Member not found" });
+
+    // Business Logic: Prevent negative balances
+    if (amount > member.totalFines) {
+      return res.status(400).json({ message: "Payment amount exceeds total fine." });
+    }
+
+    member.totalFines -= amount;
+    await member.save();
+
+    res.status(200).json({ 
+      message: "Payment successful", 
+      remainingBalance: member.totalFines 
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to process payment" });
+  }
+};
+
 /** Growth Analytics */
 export const getMemberGrowth = async (req, res) => {
   try {

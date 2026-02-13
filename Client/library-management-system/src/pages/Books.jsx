@@ -81,27 +81,37 @@ export default function Books() {
   }), [levelBooks]);
 
   // --- HANDLERS ---
-  const handleAction = async (book) => {
-    if (book.status === "issued") {
-      try {
-        const res = await API.post(`/books/${book._id}/return`);
-        if (res.data.fine > 0) {
-          setReceipt({
-            title: book.title,
-            borrower: book.borrowedBy ? `${book.borrowedBy.firstName} ${book.borrowedBy.lastName}` : "Unknown",
-            fine: res.data.fine
-          });
-          document.getElementById("fine_receipt_modal").showModal();
-        } else {
-          alert("Return successful!");
-        }
-        fetchBooks();
-      } catch (err) { alert("Return failed."); }
-    } else {
-      setSelectedBook(book);
-      document.getElementById("member_picker_modal").showModal();
-    }
-  };
+const handleAction = async (book) => {
+  if (book.status === "issued") {
+    // Port the fine logic here for a preview
+    const estimatedFine = calculateFineUI(book.dueDate);
+    
+    setSelectedBook(book); // Store the book to be returned
+    setReceipt({
+      title: book.title,
+      borrower: book.borrowedBy ? `${book.borrowedBy.firstName} ${book.borrowedBy.lastName}` : "Unknown",
+      fine: estimatedFine,
+      isPending: true // Flag to show "Confirm" button vs "Print" button
+    });
+    
+    document.getElementById("fine_receipt_modal").showModal();
+  } else {
+    setSelectedBook(book);
+    document.getElementById("member_picker_modal").showModal();
+  }
+};
+
+// Add this new function to handle the actual API call
+const finalizeReturn = async () => {
+  try {
+    const res = await API.post(`/books/${selectedBook._id}/return`);
+    // After backend confirms, update receipt with the "Final" fine from DB
+    setReceipt(prev => ({ ...prev, fine: res.data.fine, isPending: false }));
+    fetchBooks();
+  } catch (err) {
+    alert("Return failed.");
+  }
+};
 
   const confirmIssue = async (memberId) => {
     try {
@@ -133,6 +143,14 @@ export default function Books() {
     setEditingId(null);
     setForm({ title: "", author: "", genre: "" });
   };
+// Debounced member search for performance
+  useEffect(() => {
+  const delayDebounceFn = setTimeout(() => {
+    if (memberSearch.length > 1) fetchMembers();
+  }, 300); // Wait 300ms after user stops typing
+
+  return () => clearTimeout(delayDebounceFn);
+}, [memberSearch]);
 
   const deleteBook = async (id) => {
     if (window.confirm("Delete this book?")) {
@@ -249,19 +267,42 @@ export default function Books() {
       </dialog>
 
       {/* ADDITIONAL MODALS (Fine/Member) REMAIN THE SAME */}
-      <dialog id="fine_receipt_modal" className="modal">
-        <div className="modal-box border-t-8 border-error rounded-3xl">
-          <h3 className="font-black text-2xl text-error mb-6">Overdue Fine</h3>
-          <div className="space-y-4 py-4 border-y border-base-200">
-            <div className="flex justify-between"><span className="opacity-50">Book:</span><span className="font-bold">{receipt?.title}</span></div>
-            <div className="flex justify-between"><span className="opacity-50">Member:</span><span className="font-bold">{receipt?.borrower}</span></div>
-            <div className="flex justify-between items-center pt-4"><span className="text-lg font-bold">Penalty Total:</span><span className="text-3xl font-black text-error">${receipt?.fine}.00</span></div>
-          </div>
-          <div className="modal-action">
-            <button className="btn btn-error w-full rounded-xl" onClick={() => { window.print(); document.getElementById("fine_receipt_modal").close(); }}>Print Receipt</button>
-          </div>
-        </div>
-      </dialog>
+    <dialog id="fine_receipt_modal" className="modal">
+  <div className="modal-box border-t-8 border-error rounded-3xl">
+    <h3 className="font-black text-2xl text-error mb-6">
+      {receipt?.isPending ? "Confirm Return" : "Return Successful"}
+    </h3>
+    
+    <div className="space-y-4 py-4 border-y border-base-200">
+      <div className="flex justify-between">
+        <span className="opacity-50">Book:</span>
+        <span className="font-bold">{receipt?.title}</span>
+      </div>
+      <div className="flex justify-between items-center pt-4">
+        <span className="text-lg font-bold">Total Fine:</span>
+        <span className={`text-3xl font-black ${receipt?.fine > 0 ? 'text-error' : 'text-success'}`}>
+          ${receipt?.fine}.00
+        </span>
+      </div>
+      {receipt?.fine > 0 && (
+        <p className="text-xs text-center opacity-60">
+          (Based on 3-week grace period + $1 per 2 days overdue)
+        </p>
+      )}
+    </div>
+
+    <div className="modal-action">
+      {receipt?.isPending ? (
+        <>
+          <button className="btn btn-error flex-1 rounded-xl" onClick={finalizeReturn}>Confirm Return</button>
+          <button className="btn btn-ghost rounded-xl" onClick={() => document.getElementById("fine_receipt_modal").close()}>Cancel</button>
+        </>
+      ) : (
+        <button className="btn btn-primary w-full rounded-xl" onClick={() => { window.print(); document.getElementById("fine_receipt_modal").close(); }}>Print Receipt</button>
+      )}
+    </div>
+  </div>
+</dialog>
 
       <dialog id="member_picker_modal" className="modal">
         <div className="modal-box rounded-3xl">

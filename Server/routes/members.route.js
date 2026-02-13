@@ -8,6 +8,7 @@ import {
   importMembers,
   exportMembers,
   getMemberGrowth,
+  payFine,
 } from "../controllers/members.controller.js";
 import { protect, adminOnly } from "../middlewares/auth.middleware.js";
 import mongoose from "mongoose";
@@ -43,6 +44,7 @@ router.use(protect);
 router.get("/analytics/growth", adminOnly, getMemberGrowth);
 router.get("/export", adminOnly, exportMembers);
 router.post("/import", adminOnly, upload.single("file"), importMembers);
+router.patch("/:id/pay-fine", payFine);
 
 // 3. Collection Management
 router.get("/", getMembers); // Librarians/Staff can view list
