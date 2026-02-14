@@ -53,8 +53,8 @@ app.use("/api/members", memberRoutes);
 app.use("/api/classes", classRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/borrow", borrowRoutes); 
-app.use("/api/report", reportRoutes)
-app.use("/api/auditLog", auditLogRoutes)
+app.use("/api/reports", reportRoutes)
+app.use("/api/audit-logs", auditLogRoutes)
 
 // HEALTH CHECK
 app.get("/health", (req, res) => {

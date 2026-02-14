@@ -5,7 +5,6 @@ import User from "../models/user.model.js";
 /**
  * Protect routes - user must be logged in
  */
-
 export const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -23,10 +22,17 @@ export const protect = async (req, res, next) => {
       return res.status(401).json({ message: "Invalid token payload" });
     }
 
+    // Fetch user and ensure we are not excluding tenantId or other vital fields
     const user = await User.findById(decoded.id).select("-password");
-    if (!user) return res.status(401).json({ message: "User not found" });
+    
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
 
-    req.user = user; // full Mongoose document
+    // Attach full user document to request. 
+    // This ensures req.user.tenantId is available for your Audit Logs.
+    req.user = user; 
+    
     next();
   } catch (err) {
     console.error("JWT verification failed:", err.message);

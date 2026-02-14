@@ -1,6 +1,7 @@
 import Book from "../models/books.model.js";
 import mongoose from "mongoose";
 import Transaction from "../models/transactions.model.js";
+import { logAudit } from "../utils/auditLog.utils.js"; // Injected dependency
 
 // calculates fine after 3 weeks then $1 will be added every 2 days
 const calculateFine = (dueDate) => {
@@ -9,19 +10,15 @@ const calculateFine = (dueDate) => {
   const now = new Date();
   const due = new Date(dueDate);
 
-  // 1. Define the 3-week (21 days) Grace Period
   const gracePeriodMS = 21 * 24 * 60 * 60 * 1000;
   const fineStartsAt = due.getTime() + gracePeriodMS;
 
-  // 2. Check if we have actually passed that "Fine Start" date
   if (now.getTime() > fineStartsAt) {
-    // Calculate total days elapsed since the grace period ended
     const diffTime = now.getTime() - fineStartsAt;
     const totalDaysOverdue = Math.ceil(
       diffTime / (1000 * 60 * 60 * 24)
     );
 
-    // 3. Apply the "$1 every 2 days" rule
     const fineAmount = Math.ceil(totalDaysOverdue / 2);
     return fineAmount;
   }
@@ -58,9 +55,19 @@ export const addBook = async (req, res) => {
       genre: genre?.toLowerCase().trim() || "general",
       academicLevel: academicLevel || "Non-academic",
       isbn: isbn?.trim(),
+      tenantId: req.user.tenantId, // Ensure multi-tenancy
     });
 
     await newBook.save();
+
+    // LOG CAPTURE: ADD_BOOK
+    await logAudit(req, {
+      action: "ADD_BOOK",
+      resource: "Inventory",
+      targetId: newBook._id,
+      details: `Added new book: "${title}" by ${author}`,
+    });
+
     res.status(201).json(newBook);
   } catch (err) {
     if (err.code === 11000) {
@@ -91,6 +98,14 @@ export const updateBook = async (req, res) => {
       return res.status(404).json({ message: "Book not found" });
     }
 
+    // LOG CAPTURE: UPDATE_BOOK
+    await logAudit(req, {
+      action: "UPDATE_BOOK",
+      resource: "Inventory",
+      targetId: updatedBook._id,
+      details: `Updated details for: "${updatedBook.title}"`,
+    });
+
     res.status(200).json(updatedBook);
   } catch (err) {
     res.status(500).json({ message: "Failed to update book" });
@@ -110,6 +125,15 @@ export const deleteBook = async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ message: "Book not found" });
     }
+
+    // LOG CAPTURE: DELETE_BOOK
+    await logAudit(req, {
+      action: "DELETE_BOOK",
+      resource: "Inventory",
+      targetId: id,
+      details: `Deleted book: "${deleted.title}"`,
+    });
+
     res.status(200).json({ message: "Book deleted successfully" });
   } catch (err) {
     res.status(500).json({ message: "Failed to delete book" });
@@ -141,6 +165,14 @@ export const issueBook = async (req, res) => {
       return res.status(400).json({ message: "Book unavailable" });
     }
 
+    // LOG CAPTURE: ISSUE_BOOK
+    await logAudit(req, {
+      action: "ISSUE_BOOK",
+      resource: "Circulation",
+      targetId: book._id,
+      details: `Issued "${book.title}" to member: ${book.borrowedBy?.firstName} ${book.borrowedBy?.lastName}`,
+    });
+
     res.status(200).json(book);
   } catch (err) {
     res.status(500).json({ message: "Error issuing book" });
@@ -149,7 +181,7 @@ export const issueBook = async (req, res) => {
 
 /** POST /books/:id/return */
 export const returnBook = async (req, res) => {
-  const { borrowId } = req.body; 
+  const { borrowId } = req.body;
 
   try {
     const record = await Borrow.findById(borrowId);
@@ -157,39 +189,43 @@ export const returnBook = async (req, res) => {
 
     const today = new Date();
     const dueDate = new Date(record.dueDate);
-    
-    // 1. Calculate Days Late
+
     const diffTime = today - dueDate;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-    
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
     let fineApplied = 0;
-    const DAILY_RATE = 0.50; // $0.50 per day
+    const DAILY_RATE = 0.5; // $0.50 per day
 
     if (diffDays > 0) {
       fineApplied = diffDays * DAILY_RATE;
 
-      // 2. Update the Member's balance
       await Member.findByIdAndUpdate(record.memberId, {
-        $inc: { totalFines: fineApplied }
+        $inc: { totalFines: fineApplied },
       });
 
-      // 3. Create a Transaction Log for the audit trail
       await Transaction.create({
         memberId: record.memberId,
         type: "fine_incurred",
         amount: fineApplied,
-        description: `Late return: ${record.bookTitle} (${diffDays} days late)`
+        description: `Late return: ${record.bookTitle} (${diffDays} days late)`,
       });
     }
 
-    // 4. Mark the book as returned
     record.returnDate = today;
     record.status = "returned";
     await record.save();
 
-    res.status(200).json({ 
-      message: "Book returned", 
-      fine: fineApplied 
+    // LOG CAPTURE: RETURN_BOOK
+    await logAudit(req, {
+      action: "RETURN_BOOK",
+      resource: "Circulation",
+      targetId: record.bookId,
+      details: `Returned book: "${record.bookTitle}". Fine: $${fineApplied}`,
+    });
+
+    res.status(200).json({
+      message: "Book returned",
+      fine: fineApplied,
     });
   } catch (err) {
     res.status(500).json({ error: "Return failed" });
