@@ -1,10 +1,75 @@
-export const returnBook = async (req, res) => {
-  const { borrowId } = req.params;
+import mongoose from "mongoose";
+import Borrow from "../models/borrow.model.js";
+import Book from "../models/book.model.js";
+import Member from "../models/members.model.js";
+import Transaction from "../models/transaction.model.js";
+
+/**
+ * @desc    Issue a book to a member (Checkout)
+ * @route   POST /api/borrow
+ */
+export const borrowBook = async (req, res) => {
+  const { memberId, bookId, dueDate } = req.body;
+  const session = await mongoose.startSession();
 
   try {
-    const loan = await Borrow.findById(borrowId);
+    session.startTransaction();
+
+    if (!memberId || !bookId || !dueDate) {
+      throw new Error("Member ID, Book ID, and Due Date are required.");
+    }
+
+    // Check if Member exists
+    const member = await Member.findById(memberId).session(session);
+    if (!member) throw new Error("Member not found.");
+
+    // Check if Book is available
+    const book = await Book.findById(bookId).session(session);
+    if (!book) throw new Error("Book not found.");
+    if (!book.available) throw new Error("This book is already checked out.");
+
+    // 1. Create the Borrow Record
+    const newLoan = await Borrow.create([{
+      memberId,
+      bookId,
+      dueDate: new Date(dueDate),
+      status: "borrowed"
+    }], { session });
+
+    // 2. Update Book Status to Unavailable
+    book.available = false;
+    await book.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(201).json({
+      success: true,
+      message: "Book issued successfully",
+      loan: newLoan[0]
+    });
+
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    res.status(400).json({ success: false, error: err.message });
+  }
+};
+
+/**
+ * @desc    Return a book and calculate fines
+ * @route   PATCH /api/borrow/return/:borrowId
+ */
+export const returnBook = async (req, res) => {
+  const { borrowId } = req.params;
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const loan = await Borrow.findById(borrowId).session(session);
     if (!loan || loan.status === "returned") {
-      return res.status(400).json({ error: "Invalid or already returned loan." });
+      throw new Error("Invalid or already returned loan.");
     }
 
     const today = new Date();
@@ -13,36 +78,71 @@ export const returnBook = async (req, res) => {
 
     // 1. Calculate Late Fees
     if (today > dueDate) {
-      const diffTime = Math.abs(today - dueDate);
+      const diffTime = today - dueDate;
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
-      const DAILY_RATE = 0.50; // Set your rate here
+      const DAILY_RATE = 0.50; 
       fineAmount = diffDays * DAILY_RATE;
 
-      // 2. Inject Fine into Member's Account
-      await Member.findByIdAndUpdate(loan.memberId, {
-        $inc: { totalFines: fineAmount }
-      });
+      // Update Member Balance
+      await Member.findByIdAndUpdate(
+        loan.memberId, 
+        { $inc: { totalFines: fineAmount } },
+        { session }
+      );
 
-      // 3. Create a Transaction Record for the Ledger we built
-      await Transaction.create({
+      // Create Financial Transaction Record for the Ledger
+      await Transaction.create([{
         memberId: loan.memberId,
         type: "fine_incurred",
         amount: fineAmount,
-        description: `Late return: ${diffDays} days overdue.`
-      });
+        description: `Late return: ${diffDays} day(s) overdue.`
+      }], { session });
     }
 
-    // 4. Update Loan and Book Status
+    // 2. Update Loan Status
     loan.status = "returned";
     loan.returnDate = today;
-    await loan.save();
+    await loan.save({ session });
 
-    // Mark book as available again
-    await Book.findByIdAndUpdate(loan.bookId, { available: true });
+    // 3. Update Book Availability
+    const updatedBook = await Book.findByIdAndUpdate(
+      loan.bookId, 
+      { available: true },
+      { session, new: true }
+    );
 
-    res.json({ message: "Book returned", fineIncurred: fineAmount });
+    if (!updatedBook) throw new Error("Associated book record not found.");
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.json({ 
+      success: true,
+      message: "Book returned successfully", 
+      fineIncurred: fineAmount 
+    });
+
   } catch (err) {
-    res.status(500).json({ error: "Server error during return." });
+    await session.abortTransaction();
+    session.endSession();
+    res.status(400).json({ success: false, error: err.message });
+  }
+};
+
+/**
+ * @desc    Get all currently borrowed books
+ * @route   GET /api/borrow/active
+ */
+export const getActiveLoans = async (req, res) => {
+  try {
+    const loans = await Borrow.find({ status: "borrowed" })
+      .populate("bookId", "title isbn")
+      .populate("memberId", "firstName lastName")
+      .sort({ dueDate: 1 }); // Show soonest due first
+    
+    res.json(loans);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch active loans" });
   }
 };

@@ -6,12 +6,14 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import connectDB from "./config/db.config.js";
 
-// Routes
+// --- ROUTES ---
 import authRoutes from "./routes/auth.route.js";
 import bookRoutes from "./routes/books.route.js";
 import memberRoutes from "./routes/members.route.js";
 import classRoutes from "./routes/class.route.js";
 import adminRoutes from "./routes/admin.route.js";
+//FIXED: Added the missing borrow route import
+import borrowRoutes from "./routes/borrow.route.js"; 
 
 dotenv.config();
 connectDB();
@@ -21,23 +23,19 @@ const app = express();
 // --- 1. SECURITY & LOGGING ---
 app.use(helmet()); 
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:5173", // Specify your Vite/React port
+  origin: process.env.CLIENT_URL || "http://localhost:5173",
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   credentials: true
 }));
 
-// Adjusted Rate Limiter: 
-// 100 requests per 15 mins is tight for a dashboard app.
-// Let's increase this to 500 per 15 mins for development/standard use.
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: process.env.NODE_ENV === "production" ? 100 : 1000, 
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  standardHeaders: true,
+  legacyHeaders: false,
   message: { message: "Too many requests, please try again after 15 minutes." }
 });
 
-// Apply limiter to all routes
 app.use("/api/", limiter);
 
 const logFormat = process.env.NODE_ENV === "production" ? "combined" : "dev";
@@ -53,6 +51,8 @@ app.use("/api/books", bookRoutes);
 app.use("/api/members", memberRoutes);
 app.use("/api/classes", classRoutes);
 app.use("/api/admin", adminRoutes);
+// Mounted the borrow routes to handle /api/borrow/active and /api/borrow/return
+app.use("/api/borrow", borrowRoutes); 
 
 // HEALTH CHECK
 app.get("/health", (req, res) => {
@@ -70,7 +70,6 @@ app.use((req, res) => {
 
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
-  // Don't log expected 404s as errors in production
   if (statusCode !== 404) console.error(`[Error] ${err.message}`);
   
   res.status(statusCode).json({
@@ -82,7 +81,7 @@ app.use((err, req, res, next) => {
 // --- 5. START SERVER ---
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
-  console.log(`🚀 LIB-SYS Server: Port ${PORT} (${process.env.NODE_ENV || 'dev'})`);
+  console.log(`LIB-SYS Server: Port ${PORT} (${process.env.NODE_ENV || 'dev'})`);
 });
 
 // GRACEFUL SHUTDOWN

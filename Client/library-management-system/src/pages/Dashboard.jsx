@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import API from "../api/api";
+import { toast } from "react-hot-toast"; // Ensure this is installed
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
   LineChart, Line, CartesianGrid 
@@ -13,34 +14,61 @@ export default function Dashboard({ books = [] }) {
     mostBorrowedBooks: [],
     growth: []
   });
+
+  // --- ACTIVE LOANS STATE ---
+  const [loans, setLoans] = useState([]);
   const [loading, setLoading] = useState(true);
   const hasFetched = useRef(false);
 
+  // --- FETCH ALL DATA ---
+  const fetchDashboardData = async (controller) => {
+    try {
+      setLoading(true);
+      const [statsRes, loansRes] = await Promise.all([
+        API.get("/admin/dashboard-data", { signal: controller?.signal }),
+        API.get("/borrow/active", { signal: controller?.signal })
+      ]);
+      
+      setData(statsRes.data);
+      setLoans(loansRes.data);
+      hasFetched.current = true;
+    } catch (err) {
+      if (err.name !== 'CanceledError') {
+        console.error("Dashboard Data Fetch Error:", err);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (hasFetched.current) return;
-    
     const controller = new AbortController();
-
-    const fetchDashboardData = async () => {
-      try {
-        setLoading(true);
-        // Single call to the new aggregated endpoint
-        const res = await API.get("/admin/dashboard-data", { signal: controller.signal });
-        
-        setData(res.data);
-        hasFetched.current = true;
-      } catch (err) {
-        if (err.name !== 'CanceledError') {
-          console.error("Dashboard Data Fetch Error:", err);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDashboardData();
+    fetchDashboardData(controller);
     return () => controller.abort();
   }, []);
+
+  // --- RETURN BOOK LOGIC ---
+const handleReturn = async (borrowId) => {
+  if (!window.confirm("Confirm book return?")) return;
+
+  try {
+    const res = await API.patch(`/borrow/return/${borrowId}`);
+    const { fineIncurred } = res.data;
+
+    if (fineIncurred > 0) {
+      // Replace toast.error with alert
+      alert(`Book Returned Late! Fine of $${fineIncurred.toFixed(2)} added to member account.`);
+    } else {
+      // Replace toast.success with alert
+      alert("Book returned on time.");
+    }
+
+    fetchDashboardData();
+  } catch (err) {
+    alert("Error processing return.");
+  }
+};
 
   const statusChartData = [
     { name: "Borrowed", count: data.stats.borrowed },
@@ -64,7 +92,7 @@ export default function Dashboard({ books = [] }) {
         </div>
       </div>
 
-      {/* --- STATS CARDS --- */}
+      {/* --- STATS CARDS (Unchanged) --- */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="stats shadow bg-primary text-primary-content">
           <div className="stat">
@@ -95,8 +123,8 @@ export default function Dashboard({ books = [] }) {
         </div>
       </div>
 
+      {/* --- CHARTS SECTION (Unchanged) --- */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* --- INVENTORY CHART --- */}
         <div className="card bg-base-200 shadow-xl p-6">
           <h2 className="text-xl font-semibold mb-4">Inventory Status</h2>
           <ResponsiveContainer width="100%" height={300}>
@@ -110,7 +138,6 @@ export default function Dashboard({ books = [] }) {
           </ResponsiveContainer>
         </div>
 
-        {/* --- GROWTH CHART --- */}
         <div className="card bg-base-200 shadow-xl p-6">
           <h2 className="text-xl font-semibold mb-4">Member Registration Growth</h2>
           <ResponsiveContainer width="100%" height={300}>
@@ -125,10 +152,68 @@ export default function Dashboard({ books = [] }) {
         </div>
       </div>
 
-      {/* --- RECENT ACTIVITY TABLE --- */}
+      {/* --- INJECTED: ACTIVE LOANS MANAGEMENT --- */}
+      <div className="card bg-base-200 shadow-xl border border-base-300">
+        <div className="p-6 border-b border-base-300 flex justify-between items-center">
+          <h2 className="text-xl font-semibold">Current Active Loans</h2>
+          <span className="badge badge-primary">{loans.length} Outstanding</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="table w-full">
+            <thead className="bg-base-300/50">
+              <tr>
+                <th>Book Title</th>
+                <th>Member</th>
+                <th>Due Date</th>
+                <th>Status</th>
+                <th className="text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loans.map((loan) => {
+                const isOverdue = new Date(loan.dueDate) < new Date();
+                return (
+                  <tr key={loan._id} className="hover">
+                    <td>
+                      <div className="font-bold">{loan.bookId?.title}</div>
+                      <div className="text-xs opacity-50">{loan.bookId?.isbn}</div>
+                    </td>
+                    <td>{loan.memberId?.firstName} {loan.memberId?.lastName}</td>
+                    <td className={isOverdue ? "text-error font-bold" : ""}>
+                      {new Date(loan.dueDate).toLocaleDateString()}
+                    </td>
+                    <td>
+                      {isOverdue ? (
+                        <span className="badge badge-error text-white">Overdue</span>
+                      ) : (
+                        <span className="badge badge-success text-white">On Time</span>
+                      )}
+                    </td>
+                    <td className="text-right">
+                      <button 
+                        onClick={() => handleReturn(loan._id)}
+                        className="btn btn-sm btn-primary btn-outline"
+                      >
+                        Return
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {loans.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="text-center py-10 opacity-50 italic">No active loans found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* --- RECENT ACTIVITY TABLE (Unchanged) --- */}
       <div className="card bg-base-200 shadow-xl overflow-hidden border border-base-300">
         <div className="p-6 border-b border-base-300 bg-base-300/50">
-          <h2 className="text-xl font-semibold">Recent Transactions</h2>
+          <h2 className="text-xl font-semibold">Recent Activity History</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="table w-full">
@@ -152,7 +237,7 @@ export default function Dashboard({ books = [] }) {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="4" className="text-center py-10 opacity-50">No activity recorded.</td>
+                  <td colSpan="4" className="text-center py-10 opacity-50">No history recorded.</td>
                 </tr>
               )}
             </tbody>
