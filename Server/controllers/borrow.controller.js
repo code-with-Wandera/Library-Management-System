@@ -1,8 +1,8 @@
 import mongoose from "mongoose";
 import Borrow from "../models/borrow.model.js";
-import Book from "../models/book.model.js";
+import Book from "../models/books.model.js";
 import Member from "../models/members.model.js";
-import Transaction from "../models/transaction.model.js";
+import Transaction from "../models/transactions.model.js";
 
 /**
  * @desc    Issue a book to a member (Checkout)
