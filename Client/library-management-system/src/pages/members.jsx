@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import Papa from "papaparse";
 import API from "../api/api";
 import jwtDecode from "jwt-decode";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable"; // Import it as 'autoTable'
 import {
   LineChart,
   Line,
@@ -71,19 +73,18 @@ export default function Members() {
         setLoading(true);
         setError("");
         const res = await API.get("/members", {
-          params: { 
-            page: targetPage, 
-            limit: LIMIT, 
-            search, 
-            sortBy, 
-            order, 
-            unassigned: showUnassigned 
+          params: {
+            page: targetPage,
+            limit: LIMIT,
+            search,
+            sortBy,
+            order,
+            unassigned: showUnassigned
           },
         });
         setMembers(res.data.members || []);
         setTotalPages(res.data?.pagination?.totalPages || 1);
         setTotalCount(res.data?.pagination?.totalMembers || res.data?.pagination?.total || 0);
-        // We don't call setPage here to avoid recursive triggers
       } catch (err) {
         console.error("Fetch Error:", err);
         setError("Failed to fetch members.");
@@ -91,7 +92,7 @@ export default function Members() {
         setLoading(false);
       }
     },
-    [search, sortBy, order, showUnassigned] // Removed 'page' from here to prevent loops
+    [search, sortBy, order, showUnassigned, page]
   );
 
   const fetchMemberGrowth = async () => {
@@ -113,7 +114,6 @@ export default function Members() {
     }
   };
 
-  // Logic: Re-fetch whenever the page OR any filter changes
   useEffect(() => {
     fetchMembers(page);
   }, [fetchMembers, page]);
@@ -121,6 +121,50 @@ export default function Members() {
   useEffect(() => {
     fetchMemberGrowth();
   }, []);
+
+  // --- REPORT GENERATION LOGIC ---
+ // --- REPORT GENERATION LOGIC ---
+  const downloadFineReport = async () => {
+    try {
+      setLoading(true);
+      const res = await API.get("/members/reports/fines");
+      const { reportData, totalOutstanding, generatedAt } = res.data;
+
+      const doc = new jsPDF();
+
+      // Title & Header
+      doc.setFontSize(20);
+      doc.text("Outstanding Fines Report", 14, 22);
+      doc.setFontSize(11);
+      doc.setTextColor(100);
+      doc.text(`Generated on: ${new Date(generatedAt).toLocaleString()}`, 14, 30);
+      doc.text(`Total Outstanding: $${Number(totalOutstanding).toFixed(2)}`, 14, 37);
+
+      const tableColumn = ["Member ID", "Name", "Email", "Amount Owed"];
+      const tableRows = reportData.map(m => [
+        m.memberId || "N/A",
+        `${m.firstName} ${m.lastName}`,
+        m.email || "N/A",
+        `$${Number(m.totalFines).toFixed(2)}`
+      ]);
+
+      // Use the function directly instead of doc.autoTable
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 45,
+        theme: 'grid',
+        headStyles: { fillColor: [79, 70, 229] },
+      });
+
+      doc.save(`Fine_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+    } catch (err) {
+      console.error("PDF Error:", err);
+      setError("Error generating report. Ensure jspdf-autotable is correctly installed.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const addMember = async (e) => {
     e.preventDefault();
@@ -133,7 +177,7 @@ export default function Members() {
         email: email.trim() || undefined,
       });
       setFirstName(""); setLastName(""); setEmail("");
-      setPage(1); 
+      setPage(1);
       fetchMembers(1);
       fetchMemberGrowth();
     } catch (err) {
@@ -256,7 +300,7 @@ export default function Members() {
 
       <div className="form-control w-fit">
         <label className="label cursor-pointer flex gap-3 bg-gray-100 px-4 rounded-lg">
-          <span className="label-text font-semibold">Show Unassigned Only</span> 
+          <span className="label-text font-semibold">Show Unassigned Only</span>
           <input type="checkbox" className="checkbox checkbox-primary" checked={showUnassigned} onChange={(e) => { setShowUnassigned(e.target.checked); setPage(1); }} />
         </label>
       </div>
@@ -276,17 +320,22 @@ export default function Members() {
         </div>
       )}
 
+      {/* FINANCIAL AUDIT CARD */}
       <div className="card bg-indigo-600 text-white shadow-xl">
-  <div className="card-body items-center text-center">
-    <h2 className="card-title text-2xl font-black">Financial Audit</h2>
-    <p className="opacity-80">Generate a PDF of all members with outstanding balances.</p>
-    <div className="card-actions mt-4">
-      <button onClick={downloadFineReport} className="btn btn-white bg-white text-indigo-600 border-none px-8 rounded-xl hover:bg-gray-100">
-        📥 Download PDF Report
-      </button>
-    </div>
-  </div>
-</div>
+        <div className="card-body items-center text-center">
+          <h2 className="card-title text-2xl font-black">Financial Audit</h2>
+          <p className="opacity-80">Generate a PDF of all members with outstanding balances.</p>
+          <div className="card-actions mt-4">
+            <button
+              onClick={downloadFineReport}
+              disabled={loading}
+              className={`btn btn-white bg-white text-indigo-600 border-none px-8 rounded-xl hover:bg-gray-100 ${loading ? 'loading' : ''}`}
+            >
+              📥 Download PDF Report
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="overflow-x-auto border rounded-lg">
         <table className="table w-full">

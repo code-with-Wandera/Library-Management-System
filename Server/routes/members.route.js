@@ -10,6 +10,7 @@ import {
   getMemberGrowth,
   getMemberTransactions,
   payFine,
+  getFineReportData,
 } from "../controllers/members.controller.js";
 import { protect, adminOnly } from "../middlewares/auth.middleware.js";
 import mongoose from "mongoose";
@@ -18,8 +19,9 @@ import multer from "multer";
 const router = express.Router();
 
 /**
- * MULTER CONFIGURATION
- * Using disk storage with a size limit (5MB) to prevent Disk Space attacks
+ * MULTER CONFIG
+ * Destination: uploads/ folder
+ * Limit: 5MB
  */
 const upload = multer({ 
   dest: "uploads/",
@@ -27,9 +29,8 @@ const upload = multer({
 });
 
 /**
- * MIDDLEWARE: Validate MongoDB ID
- * Prevents the controller from executing if the ID is malformed, 
- * saving database resources.
+ * VALIDATE MONGODB ID
+ * Catches malformed IDs before they hit the database
  */
 const validateId = (req, res, next) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -38,24 +39,26 @@ const validateId = (req, res, next) => {
   next();
 };
 
-// 1. Authentication Middleware (Global for this router)
-router.use(protect);
+// --- GLOBAL MIDDLEWARE ---
+router.use(protect); // All member routes require a valid token
 
-// 2. Analytics & Data Routes (Admin Only)
+// --- ANALYTICS & REPORTS (Static paths first) ---
 router.get("/analytics/growth", adminOnly, getMemberGrowth);
 router.get("/export", adminOnly, exportMembers);
+router.get("/reports/fines", adminOnly, getFineReportData); 
 router.post("/import", adminOnly, upload.single("file"), importMembers);
-router.patch("/:id/pay-fine", adminOnly, payFine);
-router.get("/members/:id/transactions", adminOnly, getMemberTransactions);
 
-// 3. Collection Management
-router.get("/", getMembers); // Librarians/Staff can view list
+// --- COLLECTION MANAGEMENT ---
+router.get("/", getMembers); 
 router.post("/", adminOnly, addMember);
 
-// 4. Individual Resource Routes
-// We add validateId here to catch bad requests early
+// --- RESOURCE SPECIFIC ROUTES (ID-based paths last) ---
 router.get("/:id", validateId, getMemberById);
 router.patch("/:id", adminOnly, validateId, updateMember);
 router.delete("/:id", adminOnly, validateId, deleteMember);
+
+// --- FINANCIAL & TRANSACTION ROUTES ---
+router.patch("/:id/pay-fine", adminOnly, validateId, payFine);
+router.get("/:id/transactions", adminOnly, validateId, getMemberTransactions);
 
 export default router;
