@@ -12,7 +12,8 @@ import bookRoutes from "./routes/books.route.js";
 import memberRoutes from "./routes/members.route.js";
 import classRoutes from "./routes/class.route.js";
 import adminRoutes from "./routes/admin.route.js";
-//FIXED: Added the missing borrow route import
+import reportRoutes from "./routes/report.route.js"
+import auditLogRoutes from "./routes/auditLog.route.js"
 import borrowRoutes from "./routes/borrow.route.js"; 
 
 dotenv.config();
@@ -51,8 +52,9 @@ app.use("/api/books", bookRoutes);
 app.use("/api/members", memberRoutes);
 app.use("/api/classes", classRoutes);
 app.use("/api/admin", adminRoutes);
-// Mounted the borrow routes to handle /api/borrow/active and /api/borrow/return
 app.use("/api/borrow", borrowRoutes); 
+app.use("/api/report", reportRoutes)
+app.use("/api/auditLog", auditLogRoutes)
 
 // HEALTH CHECK
 app.get("/health", (req, res) => {
@@ -63,7 +65,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// --- 4. ERROR HANDLING ---
+//ERROR HANDLING ---
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });

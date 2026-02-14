@@ -1,50 +1,20 @@
-// utils/logAudit.utils.js
-import mongoose from "mongoose";
+import AuditLog from "../models/auditLog.model.js";
 
-// Audit Log Schema & Model
-const auditLogSchema = new mongoose.Schema(
-  {
-    user: {
-      _id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      email: String,
-      role: String,
-    },
-    action: { type: String, required: true },
-    target: { type: String },
-    ip: { type: String },
-    userAgent: { type: String },
-  },
-  { timestamps: true }
-);
-
-const AuditLogModel = mongoose.models.AuditLog || mongoose.model("AuditLog", auditLogSchema);
-
-// Audit Logging Function
-export const logAudit = async ({ user, action, target, req }) => {
+export const logAudit = async (req, { action, resource, targetId, details }) => {
   try {
-    if (!action) return;
-
-    const logEntry = {
+    // Automatically extract context from the request object
+    await AuditLog.create({
+      tenantId: req.user.tenantId,
+      userId: req.user._id,
       action,
-      target: target || "",
-      user: user
-        ? {
-            _id: user._id,
-            email: user.email,
-            role: user.role,
-          }
-        : undefined,
-    };
-
-    // Optional: capture IP and user-agent if request object is provided
-    if (req) {
-      logEntry.ip = req.ip || req.headers["x-forwarded-for"] || "";
-      logEntry.userAgent = req.headers["user-agent"] || "";
-    }
-
-    await AuditLogModel.create(logEntry);
+      resource,
+      targetId,
+      details,
+      ipAddress: req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+      userAgent: req.get('User-Agent')
+    });
   } catch (err) {
-    console.error("Audit log failed:", err.message || err);
-    // Do NOT throw error; logging should never crash main app
+    // In production, we log the failure but don't crash the main process
+    console.error("CRITICAL: Audit log failed to save:", err);
   }
 };
