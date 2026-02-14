@@ -149,49 +149,49 @@ export const issueBook = async (req, res) => {
 
 /** POST /books/:id/return */
 export const returnBook = async (req, res) => {
-  const { id } = req.params;
+  const { borrowId } = req.body; 
 
   try {
-    const book = await Book.findById(id).populate("borrowedBy");
+    const record = await Borrow.findById(borrowId);
+    if (!record) return res.status(404).json({ message: "Record not found" });
 
-    if (!book || book.status === "available") {
-      return res
-        .status(404)
-        .json({ message: "Book not found or already in library" });
+    const today = new Date();
+    const dueDate = new Date(record.dueDate);
+    
+    // 1. Calculate Days Late
+    const diffTime = today - dueDate;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    
+    let fineApplied = 0;
+    const DAILY_RATE = 0.50; // $0.50 per day
+
+    if (diffDays > 0) {
+      fineApplied = diffDays * DAILY_RATE;
+
+      // 2. Update the Member's balance
+      await Member.findByIdAndUpdate(record.memberId, {
+        $inc: { totalFines: fineApplied }
+      });
+
+      // 3. Create a Transaction Log for the audit trail
+      await Transaction.create({
+        memberId: record.memberId,
+        type: "fine_incurred",
+        amount: fineApplied,
+        description: `Late return: ${record.bookTitle} (${diffDays} days late)`
+      });
     }
 
-    const fine = calculateFine(book.dueDate);
-    const borrower = book.borrowedBy;
+    // 4. Mark the book as returned
+    record.returnDate = today;
+    record.status = "returned";
+    await record.save();
 
-    book.status = "available";
-    book.borrowedBy = null;
-    book.dueDate = null;
-    await book.save();
-
-   if (fine > 0 && borrower) {
-  // Update member fine total
-  await mongoose.model("Member").findByIdAndUpdate(
-    borrower._id,
-    { $inc: { totalFines: fine } }
-  );
-
-  // Record fine transaction
-  await Transaction.create({
-    memberId: borrower._id,
-    bookId: book._id,
-    type: "fine_accrued",
-    amount: fine,
-    description: `Fine for overdue book: ${book.title}`,
-    createdAt: new Date()
-  });
-}
-
-    res.status(200).json({
-      message: "Returned successfully",
-      book,
-      fine,
+    res.status(200).json({ 
+      message: "Book returned", 
+      fine: fineApplied 
     });
   } catch (err) {
-    res.status(500).json({ message: "Failed to return book" });
+    res.status(500).json({ error: "Return failed" });
   }
 };

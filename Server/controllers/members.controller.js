@@ -74,6 +74,7 @@ export const addMember = async (req, res) => {
       lastName: lastName.trim(),
       email: email?.trim().toLowerCase() || undefined,
       classId: classId || null,
+      totalFines: 0,
     });
     const savedMember = await newMember.save();
     res.status(201).json(savedMember);

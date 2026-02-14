@@ -1,12 +1,66 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import API from "../api/api";
+import { jsPDF } from "jspdf";
+
+// --- SUB-COMPONENT: FINANCIAL LEDGER ---
+const FinancialHistory = ({ transactions }) => {
+  return (
+    <div className="mt-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+      <h3 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-700">
+        📑 Financial Ledger
+      </h3>
+      <div className="overflow-x-auto">
+        <table className="table table-zebra w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="text-gray-600">Date</th>
+              <th className="text-gray-600">Type</th>
+              <th className="text-gray-600">Description</th>
+              <th className="text-right text-gray-600">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transactions.map((t) => (
+              <tr key={t._id} className="hover">
+                <td className="text-sm">
+                  {new Date(t.createdAt).toLocaleDateString()}
+                </td>
+                <td>
+                  <span className={`badge badge-sm font-semibold ${
+                    t.type === 'fine_incurred' ? 'badge-error' : 'badge-success'
+                  }`}>
+                    {t.type === 'fine_incurred' ? 'Fine' : 'Payment'}
+                  </span>
+                </td>
+                <td className="text-sm text-gray-600">{t.description}</td>
+                <td className={`text-right font-mono font-bold ${
+                  t.type === 'fine_incurred' ? 'text-red-600' : 'text-green-600'
+                }`}>
+                  {t.type === 'fine_incurred' ? `+` : `-`}
+                  ${t.amount.toFixed(2)}
+                </td>
+              </tr>
+            ))}
+            {transactions.length === 0 && (
+              <tr>
+                <td colSpan="4" className="text-center py-8 opacity-50 italic">
+                  No financial history found for this member.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
 
 export default function MemberDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // States
+  // --- STATES ---
   const [member, setMember] = useState(null);
   const [classes, setClasses] = useState([]);
   const [transactions, setTransactions] = useState([]); 
@@ -14,69 +68,110 @@ export default function MemberDetail() {
   const [updating, setUpdating] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
 
+  // --- DATA FETCHING ---
+  const fetchTransactions = useCallback(async () => {
+    try {
+      const txRes = await API.get(`/members/${id}/transactions`);
+      setTransactions(txRes.data || []);
+    } catch (err) {
+      console.error("Failed to fetch transactions", err);
+    }
+  }, [id]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
+        const [memberRes, classRes] = await Promise.all([
+          API.get(`/members/${id}`),
+          API.get("/classes", { params: { limit: 100 } })
+        ]);
 
-        // 1. Fetch Member
-        const memberRes = await API.get(`/members/${id}`);
         setMember(memberRes.data);
-
-        // 2. Fetch Classes
-        const classRes = await API.get("/classes", { params: { limit: 100 } });
         setClasses(classRes.data?.data || []);
-
-        // 3. Fetch Transactions 
-        const txRes = await API.get(`/members/${id}/transactions`);
-        setTransactions(txRes.data || []);
+        await fetchTransactions();
       } catch (err) {
-        console.error(err);
-        setMessage({ text: "Failed to load details", type: "error" });
+        setMessage({ text: "Failed to load member details", type: "error" });
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
-  }, [id]);
+  }, [id, fetchTransactions]);
 
+  // --- RECEIPT GENERATION (PDF) ---
+  const generateReceipt = (paymentAmount, remainingBalance) => {
+    const doc = new jsPDF({
+      unit: "mm",
+      format: [80, 150], // Receipt Printer Format
+    });
+
+    const date = new Date().toLocaleString();
+    doc.setFontSize(12);
+    doc.text("LIB-SYS RECEIPT", 40, 15, { align: "center" });
+    doc.setFontSize(8);
+    doc.text("------------------------------------------", 40, 20, { align: "center" });
+    
+    doc.text(`Date: ${date}`, 10, 30);
+    doc.text(`Member: ${member.firstName} ${member.lastName}`, 10, 35);
+    doc.text(`Member ID: ${member.memberId || id.substring(0,8)}`, 10, 40);
+    
+    doc.setFontSize(10);
+    doc.text(`PAID AMOUNT: $${paymentAmount.toFixed(2)}`, 10, 55);
+    doc.text(`REMAINING: $${remainingBalance.toFixed(2)}`, 10, 62);
+    
+    doc.setFontSize(8);
+    doc.text("------------------------------------------", 40, 75, { align: "center" });
+    doc.text("Thank you for using our library!", 40, 82, { align: "center" });
+
+    doc.save(`Receipt_${member.lastName}_${Date.now()}.pdf`);
+  };
+
+  // --- PAYMENT LOGIC ---
   const handlePayment = async () => {
-    const amount = window.prompt(
-      `Total Owed: $${member.totalFines}. Enter amount paid:`
+    const amountStr = window.prompt(
+      `Total Owed: $${member.totalFines.toFixed(2)}. Enter amount paid:`
     );
 
-    if (!amount || isNaN(amount) || amount <= 0) return;
+    if (!amountStr || isNaN(amountStr) || Number(amountStr) <= 0) return;
+    const amount = Number(amountStr);
+
+    if (amount > member.totalFines) {
+        alert("Payment cannot exceed total fine amount.");
+        return;
+    }
 
     try {
       setUpdating(true);
-      const res = await API.patch(`/members/${id}/pay-fine`, {
-        amount: Number(amount),
-      });
+      const res = await API.patch(`/members/${id}/pay-fine`, { amount });
 
-      // correct response access
-      setMember({ ...member, totalFines: res.data.remainingBalance });
+      const newBalance = res.data.remainingBalance;
+      setMember({ ...member, totalFines: newBalance });
+      
+      // Update the ledger
+      await fetchTransactions();
 
-      setMessage({ text: `Payment of $${amount} recorded!`, type: "success" });
+      setMessage({ text: `Payment of $${amount.toFixed(2)} recorded!`, type: "success" });
+      
+      if (window.confirm("Payment successful! Would you like to download a receipt?")) {
+        generateReceipt(amount, newBalance);
+      }
+      
+      setTimeout(() => setMessage({ text: "", type: "" }), 5000);
     } catch (err) {
-      setMessage({
-        text: err.response?.data?.message || "Payment failed",
-        type: "error",
-      });
+      setMessage({ text: "Payment processing failed", type: "error" });
     } finally {
       setUpdating(false);
     }
   };
 
+  // --- CLASS ASSIGNMENT ---
   const handleClassAssignment = async (classId) => {
     try {
       setUpdating(true);
-      const res = await API.patch(`/members/${id}`, {
-        classId: classId || null,
-      });
-
+      const res = await API.patch(`/members/${id}`, { classId: classId || null });
       setMember(res.data);
-      setMessage({ text: "Class updated successfully!", type: "success" });
+      setMessage({ text: "Class assignment updated!", type: "success" });
       setTimeout(() => setMessage({ text: "", type: "" }), 3000);
     } catch (err) {
       setMessage({ text: "Failed to update class", type: "error" });
@@ -85,98 +180,94 @@ export default function MemberDetail() {
     }
   };
 
-  if (loading)
-    return (
-      <div className="p-10 text-center">
-        <span className="loading loading-dots loading-lg"></span>
-      </div>
-    );
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <span className="loading loading-spinner loading-lg text-primary"></span>
+    </div>
+  );
 
-  if (!member)
-    return <div className="p-10 text-center text-error">Member not found.</div>;
+  if (!member) return <div className="p-10 text-center text-error">Member data not found.</div>;
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
-      <button onClick={() => navigate(-1)} className="btn btn-ghost btn-sm">
-        ← Back to Members
+    <div className="max-w-6xl mx-auto p-6 space-y-6 animate-fadeIn">
+      <button onClick={() => navigate(-1)} className="btn btn-ghost btn-sm gap-2">
+        ← Back to Members List
       </button>
 
-      <div className="card bg-base-100 shadow-xl border">
-        <div className="card-body">
-          <h2 className="card-title text-3xl font-bold">
-            {member.firstName} {member.lastName}
-          </h2>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        
+        {/* LEFT COLUMN: Profile & History */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="card bg-white shadow-sm border border-gray-100">
+            <div className="card-body">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h1 className="text-4xl font-extrabold text-gray-900">
+                    {member.firstName} {member.lastName}
+                  </h1>
+                  <p className="text-gray-500 mt-1">{member.email || "No email provided"}</p>
+                </div>
+                <div className="badge badge-lg badge-outline opacity-50">Member Detail</div>
+              </div>
 
-          {/* Financial History */}
-          <div className="mt-6">
-            <h3 className="font-bold mb-2">Financial History</h3>
-            <table className="table table-zebra w-full">
-              <tbody>
-                {transactions.length > 0 ? (
-                  transactions.map((tx) => (
-                    <tr key={tx._id}>
-                      <td>{new Date(tx.createdAt).toLocaleDateString()}</td>
-                      <td>{tx.type}</td>
-                      <td>{tx.description}</td>
-                      <td className="text-right">
-                        ${tx.amount.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))
+              <div className="divider"></div>
+
+              <div className="form-control w-full max-w-xs">
+                <label className="label">
+                  <span className="label-text font-bold text-gray-700">Class Assignment</span>
+                </label>
+                <select
+                  className="select select-bordered select-md bg-gray-50"
+                  value={member.classId?._id || ""}
+                  onChange={(e) => handleClassAssignment(e.target.value)}
+                  disabled={updating}
+                >
+                  <option value="">-- No Class Assigned --</option>
+                  {classes.map((c) => (
+                    <option key={c._id} value={c._id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <FinancialHistory transactions={transactions} />
+        </div>
+
+        {/* RIGHT COLUMN: Action Sidebar */}
+        <div className="space-y-6">
+          <div className={`card shadow-2xl transition-all duration-300 ${
+            member.totalFines > 0 ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
+          }`}>
+            <div className="card-body">
+              <h3 className="font-bold uppercase text-xs tracking-widest opacity-80">Outstanding Balance</h3>
+              <div className="flex items-baseline gap-1">
+                <span className="text-5xl font-black">${member.totalFines.toFixed(2)}</span>
+              </div>
+              
+              <div className="card-actions mt-6">
+                {member.totalFines > 0 ? (
+                  <button
+                    onClick={handlePayment}
+                    disabled={updating}
+                    className="btn btn-block bg-white text-red-600 border-none hover:bg-gray-100 font-bold"
+                  >
+                    {updating ? "Processing..." : "Process Payment"}
+                  </button>
                 ) : (
-                  <tr>
-                    <td colSpan="4" className="text-center italic opacity-50">
-                      No financial history found.
-                    </td>
-                  </tr>
+                  <div className="text-sm font-medium bg-white/20 p-3 rounded-lg w-full text-center">
+                    ✅ Account Clear
+                  </div>
                 )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Class Assignment */}
-          <div className="form-control mt-6">
-            <label className="label">
-              <span className="label-text font-bold">Assign to a Class</span>
-            </label>
-            <select
-              className="select select-bordered"
-              value={member.classId?._id || ""}
-              onChange={(e) => handleClassAssignment(e.target.value)}
-              disabled={updating}
-            >
-              <option value="">-- No Class --</option>
-              {classes.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Total Fines */}
-          <div className="mt-6">
-            <p className="font-bold">Total Fines</p>
-            <p className="text-2xl">${member.totalFines.toFixed(2)}</p>
-            {member.totalFines > 0 && (
-              <button
-                onClick={handlePayment}
-                className="btn btn-error btn-sm mt-2"
-              >
-                Pay
-              </button>
-            )}
+              </div>
+            </div>
           </div>
 
           {message.text && (
-            <div
-              className={`alert mt-4 ${
-                message.type === "success"
-                  ? "alert-success"
-                  : "alert-error"
-              }`}
-            >
-              {message.text}
+            <div className={`alert shadow-lg ${message.type === "success" ? "alert-success" : "alert-error"}`}>
+              <div className="flex gap-2">
+                <span>{message.text}</span>
+              </div>
             </div>
           )}
         </div>
