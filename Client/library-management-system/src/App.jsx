@@ -11,16 +11,19 @@ import Members from "./pages/members.jsx";
 import Profile from "./pages/Profile.jsx";
 import BorrowedBooks from "./pages/BorrowedBooks.jsx";
 import Classes from "./pages/Classes.jsx";
+import MemberDetail from "./pages/MemberDetail";
+// NEW: Import your Reporting and Audit pages
+import Reports from "./pages/Reports.jsx"; 
+import AuditLogs from "./pages/AuditLogs.jsx"; 
+
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthContext } from "./context/AuthContext";
-import MemberDetail from "./pages/MemberDetail";
 
 export default function App() {
   const { user } = useContext(AuthContext);
   const [books, setBooks] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  // Fetch books only if user is logged in
   useEffect(() => {
     if (user) fetchBooks();
   }, [user]);
@@ -34,7 +37,6 @@ export default function App() {
     }
   }
 
-  // Delete book
   async function deleteBook(id) {
     try {
       await API.delete(`/books/${id}`);
@@ -44,7 +46,6 @@ export default function App() {
     }
   }
 
-  // Edit book
   async function editBook(updatedBook) {
     try {
       await API.put(`/books/${updatedBook.id}`, updatedBook);
@@ -59,90 +60,55 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="flex flex-col min-h-screen">
-        {/* Navbar always on top */}
         <Navbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
 
         <div className="flex flex-1 bg-gray-100">
-          {/* Sidebar */}
           {user && sidebarOpen && <Sidebar />}
 
-          {/* Main content */}
           <main className="flex-1 p-6 transition-all">
             <Routes>
-              {/* Public Login route */}
               <Route path="/login" element={<Login />} />
 
-              {/* Dashboard */}
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute user={user}>
-                    <Dashboard books={books} />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/" element={
+                <ProtectedRoute user={user}><Dashboard books={books} /></ProtectedRoute>
+              }/>
 
-              {/* Books */}
-              <Route
-                path="/books"
-                element={
-                  <ProtectedRoute user={user}>
-                    <Books
-                      books={books}
-                      setBooks={setBooks}
-                      onDelete={deleteBook}
-                      onEdit={editBook}
-                    />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/books" element={
+                <ProtectedRoute user={user}>
+                  <Books books={books} setBooks={setBooks} onDelete={deleteBook} onEdit={editBook} />
+                </ProtectedRoute>
+              }/>
 
-              {/* Members */}
-              <Route
-                path="/members"
-                element={
-                  <ProtectedRoute user={user}>
-                    <Members />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/members" element={
+                <ProtectedRoute user={user}><Members /></ProtectedRoute>
+              }/>
 
               <Route path="/members/:id" element={
-                <ProtectedRoute user ={user}>
-                  <MemberDetail />
-                </ProtectedRoute>
-              }>
+                <ProtectedRoute user={user}><MemberDetail /></ProtectedRoute>
+              }/>
 
-              </Route>
-              <Route
-                path="/members/:id"
-                element={
-                  <ProtectedRoute user={user}>
-                    <Profile />
-                  </ProtectedRoute>
-                }
-              />
-             
+              {/* NEW: Tenant Reporting Route */}
+              <Route path="/reports" element={
+                <ProtectedRoute user={user}><Reports /></ProtectedRoute>
+              }/>
 
-              {/* Borrowed Books */}
-              <Route
-                path="/borrowed"
-                element={
-                  <ProtectedRoute user={user}>
-                    <BorrowedBooks />
-                  </ProtectedRoute>
-                }
-              />
+              {/* NEW: Tenant System Logs Route */}
+              <Route path="/audit-logs" element={
+                <ProtectedRoute user={user}><AuditLogs /></ProtectedRoute>
+              }/>
 
-              {/* Classes */}
-              <Route
-                path="/classes"
-                element={
-                  <ProtectedRoute user={user}>
-                    <Classes />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/borrowed" element={
+                <ProtectedRoute user={user}><BorrowedBooks /></ProtectedRoute>
+              }/>
+
+              <Route path="/classes" element={
+                <ProtectedRoute user={user}><Classes /></ProtectedRoute>
+              }/>
+              
+              {/* Profile Route */}
+              <Route path="/profile" element={
+                <ProtectedRoute user={user}><Profile /></ProtectedRoute>
+              }/>
             </Routes>
           </main>
         </div>

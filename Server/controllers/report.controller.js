@@ -15,12 +15,13 @@ export const getCirculationReport = async (req, res) => {
         $group: { 
           _id: { 
             status: "$status", 
-            month: { $month: "$createdAt" } 
+            month: { $month: "$createdAt" },
+            year: {$year: "$createdAt"}
           }, 
           count: { $sum: 1 } 
         } 
       },
-      { $sort: { "_id.month": 1 } }
+      { $sort: { "_id.year": 1, "_id.month": 1 } }
     ]);
 
     res.json({ success: true, data });
