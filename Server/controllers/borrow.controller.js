@@ -3,6 +3,7 @@ import Borrow from "../models/borrow.model.js";
 import Book from "../models/books.model.js";
 import Member from "../models/members.model.js";
 import Transaction from "../models/transactions.model.js";
+import { createAuditLog } from "../utils/auditLogger.utils.js";
 
 /**
  * @desc    Issue a book to a member (Checkout)
@@ -42,6 +43,13 @@ export const borrowBook = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    await createAuditLog(req, {
+      action:"ISSUE_BOOKS",
+      resource: "Books",
+      details: `Book ${bookId} issued to membere ${memberId}`,
+      payload: {bookId, memberId, dueDate}
+    })
 
     res.status(201).json({
       success: true,
