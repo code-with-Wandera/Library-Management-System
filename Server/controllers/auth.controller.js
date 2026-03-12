@@ -58,9 +58,9 @@ export const login = async (req, res) => {
 
   // Generate JWT
 const token = jwt.sign(
-  { id: user._id.toString(), role: user.role }, // always MongoDB ObjectId
-  process.env.JWT_SECRET,                      // production secret, never fallback
-  { expiresIn: "1d" }                          // or your desired expiry
+  { id: user._id.toString(), role: user.role }, 
+  process.env.JWT_SECRET,                      
+  { expiresIn: "1d" }                     
 );
 
   return res.json({

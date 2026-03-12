@@ -59,7 +59,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex flex-col min-h-screen">
+      <dv className="flex flex-col min-h-screen">
         <Navbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
 
         <div className="flex flex-1 bg-gray-100">
